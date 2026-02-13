@@ -132,8 +132,8 @@ Respond with ONLY the JSON object, no markdown fences or extra text.`;
     }
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Gemini API error:", response.status, errorText);
+      // Consume body to prevent memory leak
+      await response.text();
       return NextResponse.json(
         { error: `Gemini API error (${response.status})` },
         { status: 502 }
@@ -144,7 +144,6 @@ Respond with ONLY the JSON object, no markdown fences or extra text.`;
     const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
 
     if (!text) {
-      console.error("Unexpected Gemini response structure: missing 'candidates[0].content.parts[0].text'.");
       return NextResponse.json(
         { error: "Unexpected response from Gemini" },
         { status: 502 }
@@ -156,13 +155,6 @@ Respond with ONLY the JSON object, no markdown fences or extra text.`;
     try {
       parsed = JSON.parse(text);
     } catch {
-      const rawText = typeof text === "string" ? text : String(text ?? "");
-      const maxLogLength = 100;
-      const truncatedText =
-        rawText.length > maxLogLength
-          ? rawText.slice(0, maxLogLength) + "...[truncated]"
-          : rawText;
-      console.error("Failed to parse Gemini JSON. Sample response text:", truncatedText, "length:", rawText.length);
       return NextResponse.json(
         { error: "Failed to parse AI response" },
         { status: 502 }
@@ -197,8 +189,7 @@ Respond with ONLY the JSON object, no markdown fences or extra text.`;
     }
 
     return NextResponse.json(parsed);
-  } catch (error) {
-    console.error("Tailor API error:", error);
+  } catch {
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

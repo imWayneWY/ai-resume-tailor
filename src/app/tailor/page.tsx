@@ -119,7 +119,9 @@ export default function TailorPage() {
       sessionStorage.setItem("tailorResult", JSON.stringify(data));
       router.push("/tailor/result");
     } catch {
-      setApiError("Network error — please check your connection and try again.");
+      setApiError(
+        "Network error — please check your connection and try again."
+      );
     } finally {
       setIsLoading(false);
     }
@@ -129,18 +131,18 @@ export default function TailorPage() {
     resume.trim().length > 0 && jobDescription.trim().length > 0 && !isLoading;
 
   return (
-    <main className="mx-auto max-w-5xl px-6 py-12">
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold tracking-tight">
+    <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-12">
+      <div className="mb-6 sm:mb-8">
+        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
           Tailor your resume
         </h1>
-        <p className="mt-1 text-muted">
+        <p className="mt-1 text-sm text-muted sm:text-base">
           Paste your master resume and the job description. We&apos;ll handle
           the rest.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-6 sm:gap-8 md:grid-cols-2">
         {/* Left column — Resume */}
         <div className="flex flex-col gap-4">
           <label htmlFor="resume" className="text-sm font-medium">
@@ -185,7 +187,9 @@ export default function TailorPage() {
             </svg>
             <p className="text-sm text-muted">
               Drag &amp; drop a PDF here, or{" "}
-              <label className={`font-medium ${isLoading ? "pointer-events-none text-muted" : "cursor-pointer text-accent hover:text-accent-hover"}`}>
+              <label
+                className={`font-medium ${isLoading ? "pointer-events-none text-muted" : "cursor-pointer text-accent hover:text-accent-hover"}`}
+              >
                 browse
                 <input
                   ref={fileInputRef}
@@ -199,7 +203,9 @@ export default function TailorPage() {
               </label>
             </p>
             {fileError && (
-              <p className="mt-2 text-sm text-red-600">{fileError}</p>
+              <p role="alert" className="mt-2 text-sm text-red-600">
+                {fileError}
+              </p>
             )}
           </div>
         </div>
@@ -231,20 +237,22 @@ export default function TailorPage() {
           </label>
 
           {/* Error message */}
-          {apiError && (
-            <div
-              role="alert"
-              className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-            >
-              {apiError}
-            </div>
-          )}
+          <div aria-live="polite">
+            {apiError && (
+              <div
+                role="alert"
+                className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+              >
+                {apiError}
+              </div>
+            )}
+          </div>
 
           {/* Submit button */}
           <button
             onClick={handleSubmit}
             disabled={!isReady}
-            className="mt-4 flex items-center justify-center gap-2 rounded-lg bg-accent px-6 py-3 text-base font-medium text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+            className="mt-2 flex items-center justify-center gap-2 rounded-lg bg-accent px-6 py-3 text-base font-medium text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50 sm:mt-4"
           >
             {isLoading ? (
               <>
@@ -268,7 +276,7 @@ export default function TailorPage() {
                     d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
                   />
                 </svg>
-                Tailoring...
+                Tailoring…
               </>
             ) : (
               "Tailor Resume →"

@@ -10,9 +10,39 @@
   --color-accent-hover: #4338ca;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 body {
   background: var(--color-background);
   color: var(--color-foreground);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, sans-serif;
+}
+
+/* Visible focus states for all interactive elements */
+a:focus-visible,
+button:focus-visible,
+textarea:focus-visible,
+input:focus-visible,
+select:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* Cover letter collapse animation */
+.cover-letter-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.3s ease;
+}
+
+.cover-letter-collapse[data-expanded="true"] {
+  grid-template-rows: 1fr;
+}
+
+.cover-letter-collapse > div {
+  overflow: hidden;
 }

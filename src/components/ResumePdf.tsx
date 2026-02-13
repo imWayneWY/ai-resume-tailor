@@ -101,16 +101,16 @@ export default function ResumePdf({ sections, coverLetter }: ResumePdfProps) {
         {header && (
           <View>
             <Text style={styles.headerTitle}>{header.title}</Text>
-            <Text style={styles.headerContent}>
-              {header.content}
-            </Text>
+            <View style={styles.headerContent}>
+              {renderContent(header.content)}
+            </View>
             <View style={styles.headerDivider} />
           </View>
         )}
 
         {/* Body sections */}
         {rest.map((section, i) => (
-          <View key={i} style={styles.section} wrap={false}>
+          <View key={i} style={styles.section}>
             <Text style={styles.sectionTitle}>{section.title}</Text>
             <View style={styles.sectionContent}>
               {renderContent(section.content)}

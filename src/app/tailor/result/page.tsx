@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 
 interface Section {
@@ -19,6 +19,7 @@ export default function ResultPage() {
   const [editableSections, setEditableSections] = useState<Section[]>([]);
   const [coverLetterExpanded, setCoverLetterExpanded] = useState(false);
   const [pdfGenerating, setPdfGenerating] = useState(false);
+  const pdfGeneratingRef = useRef(false);
 
   useEffect(() => {
     const stored = sessionStorage.getItem("tailorResult");
@@ -72,7 +73,8 @@ export default function ResultPage() {
   }, [editableSections]);
 
   const handleDownloadPdf = async () => {
-    if (pdfGenerating) return;
+    if (pdfGeneratingRef.current) return;
+    pdfGeneratingRef.current = true;
     setPdfGenerating(true);
     try {
       // Dynamic imports to avoid SSR issues with @react-pdf/renderer
@@ -82,7 +84,10 @@ export default function ResultPage() {
       );
 
       const blob = await pdf(
-        ResumePdf({ sections: editableSections, coverLetter: result?.coverLetter })
+        <ResumePdf
+          sections={editableSections}
+          coverLetter={result?.coverLetter}
+        />
       ).toBlob();
 
       const url = URL.createObjectURL(blob);
@@ -91,12 +96,15 @@ export default function ResultPage() {
       a.download = "tailored-resume.pdf";
       document.body.appendChild(a);
       a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      setTimeout(() => {
+        a.remove();
+        URL.revokeObjectURL(url);
+      }, 0);
     } catch (err) {
       console.error("PDF generation failed:", err);
       alert("Failed to generate PDF. Please try again.");
     } finally {
+      pdfGeneratingRef.current = false;
       setPdfGenerating(false);
     }
   };
@@ -131,7 +139,7 @@ export default function ResultPage() {
           <button
             onClick={handleDownloadPdf}
             disabled={pdfGenerating}
-            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-60 disabled:cursor-not-allowed"
+            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {pdfGenerating ? "Generating…" : "Download PDF"}
           </button>

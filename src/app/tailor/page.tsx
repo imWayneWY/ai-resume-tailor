@@ -91,10 +91,28 @@ export default function TailorPage() {
         body: JSON.stringify({ resume, jobDescription, generateCoverLetter }),
       });
 
-      const data = await response.json();
+      const contentType = response.headers.get("content-type") || "";
+      const text = await response.text();
+
+      let data: Record<string, unknown> | null = null;
+      if (contentType.includes("application/json") && text) {
+        try {
+          data = JSON.parse(text);
+        } catch {
+          // JSON parsing failed — fall through to error handling below
+        }
+      }
 
       if (!response.ok) {
-        setApiError(data.error || "Something went wrong. Please try again.");
+        const errorMessage =
+          (data && typeof data.error === "string" && data.error) ||
+          "Something went wrong. Please try again.";
+        setApiError(errorMessage);
+        return;
+      }
+
+      if (!data) {
+        setApiError("Unexpected response from server. Please try again.");
         return;
       }
 
@@ -139,13 +157,15 @@ export default function TailorPage() {
 
           {/* PDF upload zone */}
           <div
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
+            onDragOver={isLoading ? undefined : handleDragOver}
+            onDragLeave={isLoading ? undefined : handleDragLeave}
+            onDrop={isLoading ? undefined : handleDrop}
             className={`flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-6 text-center transition-colors ${
-              isDragging
-                ? "border-accent bg-accent/5"
-                : "border-border bg-surface"
+              isLoading
+                ? "border-border bg-surface opacity-50 cursor-not-allowed"
+                : isDragging
+                  ? "border-accent bg-accent/5"
+                  : "border-border bg-surface"
             }`}
           >
             <svg
@@ -165,7 +185,7 @@ export default function TailorPage() {
             </svg>
             <p className="text-sm text-muted">
               Drag &amp; drop a PDF here, or{" "}
-              <label className="cursor-pointer font-medium text-accent hover:text-accent-hover">
+              <label className={`font-medium ${isLoading ? "pointer-events-none text-muted" : "cursor-pointer text-accent hover:text-accent-hover"}`}>
                 browse
                 <input
                   ref={fileInputRef}
@@ -173,6 +193,7 @@ export default function TailorPage() {
                   accept=".pdf"
                   className="hidden"
                   aria-label="Upload PDF resume"
+                  disabled={isLoading}
                   onChange={handleFileSelect}
                 />
               </label>
@@ -211,7 +232,10 @@ export default function TailorPage() {
 
           {/* Error message */}
           {apiError && (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <div
+              role="alert"
+              className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+            >
               {apiError}
             </div>
           )}

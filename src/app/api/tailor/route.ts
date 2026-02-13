@@ -76,6 +76,14 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const MAX_INPUT_LENGTH = 50_000;
+  if (body.resume.length > MAX_INPUT_LENGTH || body.jobDescription.length > MAX_INPUT_LENGTH) {
+    return NextResponse.json(
+      { error: `Input too large. Resume and job description must each be under ${MAX_INPUT_LENGTH.toLocaleString()} characters.` },
+      { status: 400 }
+    );
+  }
+
   const { resume, jobDescription, generateCoverLetter } = body;
 
   const userPrompt = `Here is the candidate's master resume:
@@ -136,7 +144,7 @@ Respond with ONLY the JSON object, no markdown fences or extra text.`;
     const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
 
     if (!text) {
-      console.error("Unexpected Gemini response structure:", JSON.stringify(data));
+      console.error("Unexpected Gemini response structure: missing 'candidates[0].content.parts[0].text'.");
       return NextResponse.json(
         { error: "Unexpected response from Gemini" },
         { status: 502 }
@@ -148,7 +156,13 @@ Respond with ONLY the JSON object, no markdown fences or extra text.`;
     try {
       parsed = JSON.parse(text);
     } catch {
-      console.error("Failed to parse Gemini JSON:", text);
+      const rawText = typeof text === "string" ? text : String(text ?? "");
+      const maxLogLength = 100;
+      const truncatedText =
+        rawText.length > maxLogLength
+          ? rawText.slice(0, maxLogLength) + "...[truncated]"
+          : rawText;
+      console.error("Failed to parse Gemini JSON. Sample response text:", truncatedText, "length:", rawText.length);
       return NextResponse.json(
         { error: "Failed to parse AI response" },
         { status: 502 }
@@ -157,6 +171,25 @@ Respond with ONLY the JSON object, no markdown fences or extra text.`;
 
     // Validate structure
     if (!Array.isArray(parsed.sections) || parsed.sections.length === 0) {
+      return NextResponse.json(
+        { error: "AI returned invalid resume structure" },
+        { status: 502 }
+      );
+    }
+
+    const hasInvalidSection = parsed.sections.some(
+      (section) =>
+        !section ||
+        typeof section.title !== "string" ||
+        typeof section.content !== "string"
+    );
+
+    const hasInvalidCoverLetter =
+      "coverLetter" in parsed &&
+      parsed.coverLetter !== undefined &&
+      typeof parsed.coverLetter !== "string";
+
+    if (hasInvalidSection || hasInvalidCoverLetter) {
       return NextResponse.json(
         { error: "AI returned invalid resume structure" },
         { status: 502 }

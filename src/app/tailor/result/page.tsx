@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 
 interface Section {
@@ -18,6 +18,9 @@ export default function ResultPage() {
   const [result, setResult] = useState<TailorResult | null>(null);
   const [editableSections, setEditableSections] = useState<Section[]>([]);
   const [coverLetterExpanded, setCoverLetterExpanded] = useState(false);
+  const [pdfGenerating, setPdfGenerating] = useState(false);
+  const [pdfError, setPdfError] = useState("");
+  const pdfGeneratingRef = useRef(false);
 
   useEffect(() => {
     const stored = sessionStorage.getItem("tailorResult");
@@ -70,8 +73,42 @@ export default function ResultPage() {
     }
   }, [editableSections]);
 
-  const handleDownloadPdf = () => {
-    alert("PDF export coming in next PR");
+  const handleDownloadPdf = async () => {
+    if (pdfGeneratingRef.current) return;
+    pdfGeneratingRef.current = true;
+    setPdfGenerating(true);
+    setPdfError("");
+    try {
+      // Dynamic imports to avoid SSR issues with @react-pdf/renderer
+      const { pdf } = await import("@react-pdf/renderer");
+      const { default: ResumePdf } = await import(
+        "@/components/ResumePdf"
+      );
+
+      const blob = await pdf(
+        <ResumePdf
+          sections={editableSections}
+          coverLetter={result?.coverLetter}
+        />
+      ).toBlob();
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "tailored-resume.pdf";
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        a.remove();
+        URL.revokeObjectURL(url);
+      }, 0);
+    } catch (err) {
+      console.error("PDF generation failed:", err);
+      setPdfError("Failed to generate PDF. Please try again.");
+    } finally {
+      pdfGeneratingRef.current = false;
+      setPdfGenerating(false);
+    }
   };
 
   if (!result) {
@@ -103,12 +140,23 @@ export default function ResultPage() {
           </button>
           <button
             onClick={handleDownloadPdf}
-            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
+            disabled={pdfGenerating}
+            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Download PDF
+            {pdfGenerating ? "Generating…" : "Download PDF"}
           </button>
         </div>
       </div>
+
+      {/* PDF error message */}
+      {pdfError && (
+        <div
+          role="alert"
+          className="mb-8 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+        >
+          {pdfError}
+        </div>
+      )}
 
       {/* Two-column layout */}
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">

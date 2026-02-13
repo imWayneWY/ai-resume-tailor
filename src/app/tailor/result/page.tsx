@@ -19,6 +19,7 @@ export default function ResultPage() {
   const [editableSections, setEditableSections] = useState<Section[]>([]);
   const [coverLetterExpanded, setCoverLetterExpanded] = useState(false);
   const [pdfGenerating, setPdfGenerating] = useState(false);
+  const [pdfError, setPdfError] = useState("");
   const pdfGeneratingRef = useRef(false);
 
   useEffect(() => {
@@ -76,6 +77,7 @@ export default function ResultPage() {
     if (pdfGeneratingRef.current) return;
     pdfGeneratingRef.current = true;
     setPdfGenerating(true);
+    setPdfError("");
     try {
       // Dynamic imports to avoid SSR issues with @react-pdf/renderer
       const { pdf } = await import("@react-pdf/renderer");
@@ -102,7 +104,7 @@ export default function ResultPage() {
       }, 0);
     } catch (err) {
       console.error("PDF generation failed:", err);
-      alert("Failed to generate PDF. Please try again.");
+      setPdfError("Failed to generate PDF. Please try again.");
     } finally {
       pdfGeneratingRef.current = false;
       setPdfGenerating(false);
@@ -145,6 +147,16 @@ export default function ResultPage() {
           </button>
         </div>
       </div>
+
+      {/* PDF error message */}
+      {pdfError && (
+        <div
+          role="alert"
+          className="mb-8 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+        >
+          {pdfError}
+        </div>
+      )}
 
       {/* Two-column layout */}
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">

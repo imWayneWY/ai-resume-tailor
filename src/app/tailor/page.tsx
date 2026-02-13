@@ -13,6 +13,8 @@ export default function TailorPage() {
   const [generateCoverLetter, setGenerateCoverLetter] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [fileError, setFileError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [apiError, setApiError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -78,15 +80,53 @@ export default function TailorPage() {
     [processFile]
   );
 
-  const handleSubmit = () => {
-    sessionStorage.setItem(
-      "tailorData",
-      JSON.stringify({ resume, jobDescription, generateCoverLetter })
-    );
-    router.push("/tailor/result");
+  const handleSubmit = async () => {
+    setApiError("");
+    setIsLoading(true);
+
+    try {
+      const response = await fetch("/api/tailor", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ resume, jobDescription, generateCoverLetter }),
+      });
+
+      const contentType = response.headers.get("content-type") || "";
+      const text = await response.text();
+
+      let data: Record<string, unknown> | null = null;
+      if (contentType.includes("application/json") && text) {
+        try {
+          data = JSON.parse(text);
+        } catch {
+          // JSON parsing failed — fall through to error handling below
+        }
+      }
+
+      if (!response.ok) {
+        const errorMessage =
+          (data && typeof data.error === "string" && data.error) ||
+          "Something went wrong. Please try again.";
+        setApiError(errorMessage);
+        return;
+      }
+
+      if (!data) {
+        setApiError("Unexpected response from server. Please try again.");
+        return;
+      }
+
+      sessionStorage.setItem("tailorResult", JSON.stringify(data));
+      router.push("/tailor/result");
+    } catch {
+      setApiError("Network error — please check your connection and try again.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const isReady = resume.trim().length > 0 && jobDescription.trim().length > 0;
+  const isReady =
+    resume.trim().length > 0 && jobDescription.trim().length > 0 && !isLoading;
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-12">
@@ -111,18 +151,21 @@ export default function TailorPage() {
             value={resume}
             onChange={(e) => setResume(e.target.value)}
             placeholder="Paste your full resume here..."
-            className="h-64 resize-y rounded-lg border border-border bg-white p-4 text-sm leading-relaxed placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none"
+            disabled={isLoading}
+            className="h-64 resize-y rounded-lg border border-border bg-white p-4 text-sm leading-relaxed placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none disabled:opacity-50"
           />
 
           {/* PDF upload zone */}
           <div
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
+            onDragOver={isLoading ? undefined : handleDragOver}
+            onDragLeave={isLoading ? undefined : handleDragLeave}
+            onDrop={isLoading ? undefined : handleDrop}
             className={`flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-6 text-center transition-colors ${
-              isDragging
-                ? "border-accent bg-accent/5"
-                : "border-border bg-surface"
+              isLoading
+                ? "border-border bg-surface opacity-50 cursor-not-allowed"
+                : isDragging
+                  ? "border-accent bg-accent/5"
+                  : "border-border bg-surface"
             }`}
           >
             <svg
@@ -142,7 +185,7 @@ export default function TailorPage() {
             </svg>
             <p className="text-sm text-muted">
               Drag &amp; drop a PDF here, or{" "}
-              <label className="cursor-pointer font-medium text-accent hover:text-accent-hover">
+              <label className={`font-medium ${isLoading ? "pointer-events-none text-muted" : "cursor-pointer text-accent hover:text-accent-hover"}`}>
                 browse
                 <input
                   ref={fileInputRef}
@@ -150,6 +193,7 @@ export default function TailorPage() {
                   accept=".pdf"
                   className="hidden"
                   aria-label="Upload PDF resume"
+                  disabled={isLoading}
                   onChange={handleFileSelect}
                 />
               </label>
@@ -170,7 +214,8 @@ export default function TailorPage() {
             value={jobDescription}
             onChange={(e) => setJobDescription(e.target.value)}
             placeholder="Paste the job description here..."
-            className="h-64 resize-y rounded-lg border border-border bg-white p-4 text-sm leading-relaxed placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none"
+            disabled={isLoading}
+            className="h-64 resize-y rounded-lg border border-border bg-white p-4 text-sm leading-relaxed placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none disabled:opacity-50"
           />
 
           {/* Cover letter checkbox */}
@@ -179,18 +224,55 @@ export default function TailorPage() {
               type="checkbox"
               checked={generateCoverLetter}
               onChange={(e) => setGenerateCoverLetter(e.target.checked)}
+              disabled={isLoading}
               className="h-4 w-4 rounded border-border accent-accent"
             />
             <span className="text-muted">Generate cover letter too</span>
           </label>
 
+          {/* Error message */}
+          {apiError && (
+            <div
+              role="alert"
+              className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+            >
+              {apiError}
+            </div>
+          )}
+
           {/* Submit button */}
           <button
             onClick={handleSubmit}
             disabled={!isReady}
-            className="mt-4 rounded-lg bg-accent px-6 py-3 text-base font-medium text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+            className="mt-4 flex items-center justify-center gap-2 rounded-lg bg-accent px-6 py-3 text-base font-medium text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Tailor Resume →
+            {isLoading ? (
+              <>
+                <svg
+                  className="h-5 w-5 animate-spin"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  aria-hidden="true"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                  />
+                </svg>
+                Tailoring...
+              </>
+            ) : (
+              "Tailor Resume →"
+            )}
           </button>
         </div>
       </div>

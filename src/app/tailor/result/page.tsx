@@ -65,7 +65,7 @@ export default function ResultPage() {
     const stored = sessionStorage.getItem("tailorResult");
     if (!stored) return;
     try {
-      const current = JSON.parse(stored);
+      const current: TailorResult = JSON.parse(stored);
       current.sections = editableSections;
       sessionStorage.setItem("tailorResult", JSON.stringify(current));
     } catch {
@@ -102,8 +102,7 @@ export default function ResultPage() {
         a.remove();
         URL.revokeObjectURL(url);
       }, 0);
-    } catch (err) {
-      console.error("PDF generation failed:", err);
+    } catch {
       setPdfError("Failed to generate PDF. Please try again.");
     } finally {
       pdfGeneratingRef.current = false;
@@ -113,21 +112,21 @@ export default function ResultPage() {
 
   if (!result) {
     return (
-      <main className="mx-auto max-w-5xl px-6 py-16">
-        <p className="text-muted">Loading...</p>
+      <main className="mx-auto max-w-5xl px-4 py-16 sm:px-6">
+        <p className="text-center text-muted">Loading…</p>
       </main>
     );
   }
 
   return (
-    <main className="mx-auto max-w-6xl px-6 py-12">
+    <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
       {/* Top bar */}
-      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mb-6 flex flex-col gap-4 sm:mb-8 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
             Tailored Resume
           </h1>
-          <p className="mt-1 text-muted">
+          <p className="mt-1 text-sm text-muted sm:text-base">
             Review and edit your tailored resume below.
           </p>
         </div>
@@ -141,7 +140,7 @@ export default function ResultPage() {
           <button
             onClick={handleDownloadPdf}
             disabled={pdfGenerating}
-            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed"
+            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
           >
             {pdfGenerating ? "Generating…" : "Download PDF"}
           </button>
@@ -149,29 +148,31 @@ export default function ResultPage() {
       </div>
 
       {/* PDF error message */}
-      {pdfError && (
-        <div
-          role="alert"
-          className="mb-8 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-        >
-          {pdfError}
-        </div>
-      )}
+      <div aria-live="polite">
+        {pdfError && (
+          <div
+            role="alert"
+            className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 sm:mb-8"
+          >
+            {pdfError}
+          </div>
+        )}
+      </div>
 
-      {/* Two-column layout */}
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
-        {/* Left — Preview */}
+      {/* Two-column layout: edit first on mobile, preview first on desktop */}
+      <div className="grid grid-cols-1 gap-6 sm:gap-8 lg:grid-cols-2">
+        {/* Preview */}
         <div className="order-2 lg:order-1">
-          <h2 className="mb-4 text-sm font-medium text-muted uppercase tracking-wide">
+          <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-muted">
             Preview
           </h2>
-          <div className="rounded-lg border border-border bg-white p-8 shadow-sm">
+          <div className="rounded-lg border border-border bg-white p-6 shadow-sm sm:p-8">
             {editableSections.map((section, i) => (
               <div key={i} className={i > 0 ? "mt-6" : ""}>
-                <h3 className="text-lg font-semibold tracking-tight border-b border-border pb-1 mb-3">
+                <h3 className="mb-3 border-b border-border pb-1 text-lg font-semibold tracking-tight">
                   {section.title}
                 </h3>
-                <div className="text-sm leading-relaxed whitespace-pre-wrap">
+                <div className="whitespace-pre-wrap text-sm leading-relaxed">
                   {section.content}
                 </div>
               </div>
@@ -179,9 +180,9 @@ export default function ResultPage() {
           </div>
         </div>
 
-        {/* Right — Edit */}
+        {/* Edit */}
         <div className="order-1 lg:order-2">
-          <h2 className="mb-4 text-sm font-medium text-muted uppercase tracking-wide">
+          <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-muted">
             Edit Sections
           </h2>
           <div className="flex flex-col gap-4">
@@ -215,14 +216,14 @@ export default function ResultPage() {
 
       {/* Cover Letter */}
       {result.coverLetter && (
-        <div className="mt-8">
+        <div className="mt-6 sm:mt-8">
           <button
             onClick={() => setCoverLetterExpanded(!coverLetterExpanded)}
             aria-expanded={coverLetterExpanded}
-            className="flex items-center gap-2 text-sm font-medium text-muted hover:text-foreground transition-colors"
+            className="flex items-center gap-2 text-sm font-medium text-muted transition-colors hover:text-foreground"
           >
             <svg
-              className={`h-4 w-4 transition-transform ${
+              className={`h-4 w-4 transition-transform duration-200 ${
                 coverLetterExpanded ? "rotate-90" : ""
               }`}
               fill="none"
@@ -239,13 +240,18 @@ export default function ResultPage() {
             </svg>
             Cover Letter
           </button>
-          {coverLetterExpanded && (
-            <div className="mt-4 rounded-lg border border-border bg-white p-6">
-              <div className="text-sm leading-relaxed whitespace-pre-wrap">
-                {result.coverLetter}
+          <div
+            className="cover-letter-collapse mt-4"
+            data-expanded={coverLetterExpanded}
+          >
+            <div>
+              <div className="rounded-lg border border-border bg-white p-6">
+                <div className="whitespace-pre-wrap text-sm leading-relaxed">
+                  {result.coverLetter}
+                </div>
               </div>
             </div>
-          )}
+          </div>
         </div>
       )}
     </main>

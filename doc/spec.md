@@ -105,6 +105,136 @@ Recommendation: Start with `@react-pdf/renderer` for v1.
 - No multi-user support
 - No payment / subscription
 
+## UI Design
+
+### Philosophy
+
+- **Minimal and clean** — generous whitespace, no visual clutter
+- **Content-first** — the resume is the star, UI gets out of the way
+- **Monochrome + one accent** — neutral grays/whites with a single accent color (blue or indigo)
+- **No sidebar** — top nav only, keep it simple
+- **Inspiration:** Notion, Linear, Vercel dashboard — functional elegance
+
+### Color Palette
+
+| Role        | Value                  |
+| ----------- | ---------------------- |
+| Background  | `#FFFFFF` (white)      |
+| Surface     | `#F9FAFB` (gray-50)   |
+| Border      | `#E5E7EB` (gray-200)  |
+| Text        | `#111827` (gray-900)   |
+| Muted text  | `#6B7280` (gray-500)  |
+| Accent      | `#4F46E5` (indigo-600)|
+| Accent hover| `#4338CA` (indigo-700)|
+
+### Typography
+
+- **Font:** System font stack (Inter if we want to get fancy)
+- **Headings:** Semi-bold, tight tracking
+- **Body:** Regular weight, comfortable line height
+- **Resume preview:** Serif font option for a professional feel
+
+### Layout — `/` Landing Page
+
+```
+┌──────────────────────────────────────────────┐
+│  Logo                              [Get Started] │
+├──────────────────────────────────────────────┤
+│                                              │
+│          Tailor your resume in seconds       │
+│          One line subtitle here              │
+│                                              │
+│              [ Get Started → ]               │
+│                                              │
+└──────────────────────────────────────────────┘
+```
+
+- Hero only. No feature grids, no testimonials, no bloat.
+- One heading, one subtitle, one CTA button. Done.
+
+### Layout — `/tailor` Main Workspace
+
+```
+┌──────────────────────────────────────────────┐
+│  Logo                        [History] [Help]│
+├─────────────────────┬────────────────────────┤
+│                     │                        │
+│  Master Resume      │   Job Description      │
+│  ┌───────────────┐  │   ┌──────────────────┐ │
+│  │ Paste or      │  │   │ Paste job desc   │ │
+│  │ upload PDF    │  │   │ here...          │ │
+│  │               │  │   │                  │ │
+│  │               │  │   │                  │ │
+│  └───────────────┘  │   └──────────────────┘ │
+│                     │                        │
+│                     │   ☐ Generate cover     │
+│                     │     letter too         │
+│                     │                        │
+│                     │   [ Tailor Resume → ]  │
+├─────────────────────┴────────────────────────┤
+│  (footer: minimal, just a link or two)       │
+└──────────────────────────────────────────────┘
+```
+
+- **Two equal columns** — resume left, job description right
+- Resume input: textarea with drag-and-drop PDF upload zone
+- Job description: plain textarea
+- One CTA button: "Tailor Resume"
+- Cover letter toggle: simple checkbox, not a separate page
+
+### Layout — `/tailor/result` Result Page
+
+```
+┌──────────────────────────────────────────────┐
+│  Logo               [← Back]  [Download PDF] │
+├─────────────────────┬────────────────────────┤
+│                     │                        │
+│  Tailored Resume    │   Edit Panel           │
+│  ┌───────────────┐  │   ┌──────────────────┐ │
+│  │               │  │   │ Section: Summary │ │
+│  │  Live PDF     │  │   │ ┌──────────────┐ │ │
+│  │  Preview      │  │   │ │ Edit text... │ │ │
+│  │               │  │   │ └──────────────┘ │ │
+│  │               │  │   │                  │ │
+│  │               │  │   │ Section: Skills  │ │
+│  │               │  │   │ ┌──────────────┐ │ │
+│  │               │  │   │ │ Edit text... │ │ │
+│  │               │  │   │ └──────────────┘ │ │
+│  └───────────────┘  │   └──────────────────┘ │
+│                     │                        │
+│  Cover Letter ▼     │                        │
+│  (collapsible)      │                        │
+└─────────────────────┴────────────────────────┘
+```
+
+- **Left:** live preview of the tailored resume (looks like an actual PDF)
+- **Right:** editable sections — click a section to edit, changes reflect in preview
+- **Top:** back button + download PDF
+- **Cover letter:** collapsible section below the resume preview, not a separate page
+
+### Components
+
+- **TextArea** — clean border, subtle focus ring, placeholder text
+- **Button** — primary (accent fill), secondary (outline), ghost (text only)
+- **Card** — white bg, thin border, slight shadow on hover
+- **Upload zone** — dashed border, drag-and-drop with file icon
+- **Loading state** — simple spinner or skeleton, no flashy animations
+
+### Responsive
+
+- Desktop: two-column layout as shown above
+- Tablet: two columns, tighter spacing
+- Mobile: stack to single column (resume input → job desc → CTA)
+
+### What We're NOT Doing
+
+- No dark mode (v1)
+- No animations beyond subtle hover/transitions
+- No sidebar navigation
+- No dashboard with cards/stats
+- No onboarding wizard
+- No floating action buttons
+
 ## Reference
 
 - [Resume Matcher](https://github.com/srbhr/Resume-Matcher) — similar open-source project (Python + React)

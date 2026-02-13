@@ -1,5 +1,6 @@
 "use client";
 
+import type React from "react";
 import { useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 
@@ -129,6 +130,8 @@ export default function TailorPage() {
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
+              aria-hidden="true"
+              focusable="false"
             >
               <path
                 strokeLinecap="round"

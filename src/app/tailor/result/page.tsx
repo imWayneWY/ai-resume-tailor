@@ -18,6 +18,7 @@ export default function ResultPage() {
   const [result, setResult] = useState<TailorResult | null>(null);
   const [editableSections, setEditableSections] = useState<Section[]>([]);
   const [coverLetterExpanded, setCoverLetterExpanded] = useState(false);
+  const [pdfGenerating, setPdfGenerating] = useState(false);
 
   useEffect(() => {
     const stored = sessionStorage.getItem("tailorResult");
@@ -70,8 +71,34 @@ export default function ResultPage() {
     }
   }, [editableSections]);
 
-  const handleDownloadPdf = () => {
-    alert("PDF export coming in next PR");
+  const handleDownloadPdf = async () => {
+    if (pdfGenerating) return;
+    setPdfGenerating(true);
+    try {
+      // Dynamic imports to avoid SSR issues with @react-pdf/renderer
+      const { pdf } = await import("@react-pdf/renderer");
+      const { default: ResumePdf } = await import(
+        "@/components/ResumePdf"
+      );
+
+      const blob = await pdf(
+        ResumePdf({ sections: editableSections, coverLetter: result?.coverLetter })
+      ).toBlob();
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "tailored-resume.pdf";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("PDF generation failed:", err);
+      alert("Failed to generate PDF. Please try again.");
+    } finally {
+      setPdfGenerating(false);
+    }
   };
 
   if (!result) {
@@ -103,9 +130,10 @@ export default function ResultPage() {
           </button>
           <button
             onClick={handleDownloadPdf}
-            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
+            disabled={pdfGenerating}
+            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            Download PDF
+            {pdfGenerating ? "Generating…" : "Download PDF"}
           </button>
         </div>
       </div>

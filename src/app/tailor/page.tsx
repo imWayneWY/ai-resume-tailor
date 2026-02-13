@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 export default function TailorPage() {
   const router = useRouter();
@@ -9,6 +11,8 @@ export default function TailorPage() {
   const [jobDescription, setJobDescription] = useState("");
   const [generateCoverLetter, setGenerateCoverLetter] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [fileError, setFileError] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -17,32 +21,63 @@ export default function TailorPage() {
 
   const handleDragLeave = useCallback((e: React.DragEvent) => {
     e.preventDefault();
+    const currentTarget = e.currentTarget as HTMLElement;
+    const relatedTarget = e.relatedTarget as Node | null;
+
+    if (relatedTarget && currentTarget.contains(relatedTarget)) {
+      return;
+    }
     setIsDragging(false);
   }, []);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    // PDF parsing will be implemented later
-    // For now, just acknowledge the drop
-    const file = e.dataTransfer.files[0];
-    if (file && file.type === "application/pdf") {
+  const processFile = useCallback(
+    (file: File) => {
+      setFileError("");
+
+      if (file.type !== "application/pdf") {
+        setFileError("Only PDF files are accepted.");
+        return;
+      }
+      if (file.size === 0) {
+        setFileError("File is empty.");
+        return;
+      }
+      if (file.size > MAX_FILE_SIZE) {
+        setFileError("File is too large (max 10MB).");
+        return;
+      }
+
+      if (resume.trim().length > 0) {
+        const confirmed = window.confirm(
+          "This will replace your current resume text. Continue?"
+        );
+        if (!confirmed) return;
+      }
+
       setResume(`[Uploaded: ${file.name}] — PDF parsing coming soon`);
-    }
-  }, []);
+    },
+    [resume]
+  );
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setIsDragging(false);
+      const file = e.dataTransfer.files[0];
+      if (file) processFile(file);
+    },
+    [processFile]
+  );
 
   const handleFileSelect = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
-      if (file && file.type === "application/pdf") {
-        setResume(`[Uploaded: ${file.name}] — PDF parsing coming soon`);
-      }
+      if (file) processFile(file);
     },
-    []
+    [processFile]
   );
 
   const handleSubmit = () => {
-    // Store data in sessionStorage for the result page
     sessionStorage.setItem(
       "tailorData",
       JSON.stringify({ resume, jobDescription, generateCoverLetter })
@@ -67,8 +102,11 @@ export default function TailorPage() {
       <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
         {/* Left column — Resume */}
         <div className="flex flex-col gap-4">
-          <label className="text-sm font-medium">Master Resume</label>
+          <label htmlFor="resume" className="text-sm font-medium">
+            Master Resume
+          </label>
           <textarea
+            id="resume"
             value={resume}
             onChange={(e) => setResume(e.target.value)}
             placeholder="Paste your full resume here..."
@@ -104,20 +142,28 @@ export default function TailorPage() {
               <label className="cursor-pointer font-medium text-accent hover:text-accent-hover">
                 browse
                 <input
+                  ref={fileInputRef}
                   type="file"
                   accept=".pdf"
                   className="hidden"
+                  aria-label="Upload PDF resume"
                   onChange={handleFileSelect}
                 />
               </label>
             </p>
+            {fileError && (
+              <p className="mt-2 text-sm text-red-600">{fileError}</p>
+            )}
           </div>
         </div>
 
         {/* Right column — Job Description */}
         <div className="flex flex-col gap-4">
-          <label className="text-sm font-medium">Job Description</label>
+          <label htmlFor="jobDescription" className="text-sm font-medium">
+            Job Description
+          </label>
           <textarea
+            id="jobDescription"
             value={jobDescription}
             onChange={(e) => setJobDescription(e.target.value)}
             placeholder="Paste the job description here..."

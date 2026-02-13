@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 
 interface Section {
@@ -28,7 +28,16 @@ export default function ResultPage() {
 
     try {
       const parsed: TailorResult = JSON.parse(stored);
-      if (!parsed.sections || parsed.sections.length === 0) {
+      if (
+        !Array.isArray(parsed.sections) ||
+        parsed.sections.length === 0 ||
+        parsed.sections.some(
+          (s) =>
+            !s ||
+            typeof s.title !== "string" ||
+            typeof s.content !== "string"
+        )
+      ) {
         router.replace("/tailor");
         return;
       }
@@ -39,13 +48,27 @@ export default function ResultPage() {
     }
   }, [router]);
 
-  const updateSection = (index: number, content: string) => {
+  const updateSection = useCallback((index: number, content: string) => {
     setEditableSections((prev) => {
       const next = [...prev];
       next[index] = { ...next[index], content };
       return next;
     });
-  };
+  }, []);
+
+  // Persist edits to sessionStorage so changes survive navigation
+  useEffect(() => {
+    if (editableSections.length === 0) return;
+    const stored = sessionStorage.getItem("tailorResult");
+    if (!stored) return;
+    try {
+      const current = JSON.parse(stored);
+      current.sections = editableSections;
+      sessionStorage.setItem("tailorResult", JSON.stringify(current));
+    } catch {
+      // ignore
+    }
+  }, [editableSections]);
 
   const handleDownloadPdf = () => {
     alert("PDF export coming in next PR");
@@ -114,22 +137,30 @@ export default function ResultPage() {
             Edit Sections
           </h2>
           <div className="flex flex-col gap-4">
-            {editableSections.map((section, i) => (
-              <div
-                key={i}
-                className="rounded-lg border border-border bg-white p-4"
-              >
-                <label className="mb-2 block text-sm font-medium">
-                  {section.title}
-                </label>
-                <textarea
-                  value={section.content}
-                  onChange={(e) => updateSection(i, e.target.value)}
-                  rows={Math.max(4, section.content.split("\n").length + 1)}
-                  className="w-full resize-y rounded-lg border border-border bg-surface p-3 text-sm leading-relaxed placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none"
-                />
-              </div>
-            ))}
+            {editableSections.map((section, i) => {
+              const textareaId = `section-${i}`;
+              const rows = Math.max(4, section.content.split("\n").length + 1);
+              return (
+                <div
+                  key={i}
+                  className="rounded-lg border border-border bg-white p-4"
+                >
+                  <label
+                    className="mb-2 block text-sm font-medium"
+                    htmlFor={textareaId}
+                  >
+                    {section.title}
+                  </label>
+                  <textarea
+                    id={textareaId}
+                    value={section.content}
+                    onChange={(e) => updateSection(i, e.target.value)}
+                    rows={rows}
+                    className="w-full resize-y rounded-lg border border-border bg-surface p-3 text-sm leading-relaxed placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none"
+                  />
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -139,6 +170,7 @@ export default function ResultPage() {
         <div className="mt-8">
           <button
             onClick={() => setCoverLetterExpanded(!coverLetterExpanded)}
+            aria-expanded={coverLetterExpanded}
             className="flex items-center gap-2 text-sm font-medium text-muted hover:text-foreground transition-colors"
           >
             <svg

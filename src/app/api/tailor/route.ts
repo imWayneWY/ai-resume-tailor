@@ -51,8 +51,10 @@ function validateRequest(
   );
 }
 
-function validateApiKeyField(body: Record<string, unknown>): boolean {
-  if ("apiKey" in body && body.apiKey !== undefined && typeof body.apiKey !== "string") {
+function validateApiKeyField(body: unknown): boolean {
+  if (!body || typeof body !== "object") return true;
+  const b = body as Record<string, unknown>;
+  if ("apiKey" in b && b.apiKey !== undefined && typeof b.apiKey !== "string") {
     return false;
   }
   return true;
@@ -76,7 +78,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (!validateApiKeyField(body as Record<string, unknown>)) {
+  if (!validateApiKeyField(body)) {
     return NextResponse.json(
       { error: "Invalid apiKey: must be a string" },
       { status: 400 }

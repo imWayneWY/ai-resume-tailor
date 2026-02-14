@@ -173,4 +173,53 @@ describe("SettingsPage", () => {
       "spaced-key"
     );
   });
+
+  it("shows error when localStorage.setItem throws", async () => {
+    const user = userEvent.setup();
+    render(<SettingsPage />);
+    await waitFor(() => {
+      expect(screen.getByLabelText(/gemini api key/i)).toBeInTheDocument();
+    });
+
+    await user.type(screen.getByLabelText(/gemini api key/i), "some-key");
+
+    localStorageMock.setItem.mockImplementationOnce(() => {
+      throw new Error("QuotaExceeded");
+    });
+
+    await user.click(screen.getByRole("button", { name: /save/i }));
+    expect(screen.getByRole("alert")).toHaveTextContent(/failed to save/i);
+  });
+
+  it("shows error when localStorage.removeItem throws", async () => {
+    localStorageMock.setItem("gemini-api-key", "some-key");
+    localStorageMock.setItem.mockClear();
+
+    const user = userEvent.setup();
+    render(<SettingsPage />);
+    await waitFor(() => {
+      expect(screen.getByLabelText(/gemini api key/i)).toHaveValue("some-key");
+    });
+
+    localStorageMock.removeItem.mockImplementationOnce(() => {
+      throw new Error("Storage disabled");
+    });
+
+    await user.click(screen.getByRole("button", { name: /clear/i }));
+    expect(screen.getByRole("alert")).toHaveTextContent(/failed to clear/i);
+  });
+
+  it("still loads page when localStorage.getItem throws", async () => {
+    localStorageMock.getItem.mockImplementationOnce(() => {
+      throw new Error("Storage disabled");
+    });
+
+    render(<SettingsPage />);
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: /settings/i })
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByLabelText(/gemini api key/i)).toHaveValue("");
+  });
 });

@@ -148,7 +148,7 @@ describe("POST /api/tailor", () => {
     );
     expect(res.status).toBe(400);
     const json = await res.json();
-    expect(json.error).toMatch(/missing required fields/i);
+    expect(json.error).toMatch(/invalid apiKey/i);
   });
 
   // --- Input validation ---
@@ -433,6 +433,20 @@ describe("POST /api/tailor", () => {
 
     const url = mockFetch.mock.calls[0][0];
     expect(url).toContain("key=test-api-key");
+  });
+
+  it("URL-encodes the API key in the Gemini request URL", async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify(validGeminiResponse), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    await POST(makeRequest({ ...validBody, apiKey: "key&with=special?chars" }));
+
+    const url = mockFetch.mock.calls[0][0];
+    expect(url).toContain("key=key%26with%3Dspecial%3Fchars");
   });
 
   it("sends correct generation config to Gemini", async () => {

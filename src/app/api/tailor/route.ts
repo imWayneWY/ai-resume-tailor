@@ -42,17 +42,17 @@ function validateRequest(
 ): body is TailorRequest {
   if (!body || typeof body !== "object") return false;
   const b = body as Record<string, unknown>;
-  if (
-    typeof b.resume !== "string" ||
-    b.resume.trim().length === 0 ||
-    typeof b.jobDescription !== "string" ||
-    b.jobDescription.trim().length === 0 ||
-    typeof b.generateCoverLetter !== "boolean"
-  ) {
-    return false;
-  }
-  // apiKey is optional, but if present must be a string
-  if ("apiKey" in b && b.apiKey !== undefined && typeof b.apiKey !== "string") {
+  return (
+    typeof b.resume === "string" &&
+    b.resume.trim().length > 0 &&
+    typeof b.jobDescription === "string" &&
+    b.jobDescription.trim().length > 0 &&
+    typeof b.generateCoverLetter === "boolean"
+  );
+}
+
+function validateApiKeyField(body: Record<string, unknown>): boolean {
+  if ("apiKey" in body && body.apiKey !== undefined && typeof body.apiKey !== "string") {
     return false;
   }
   return true;
@@ -76,15 +76,23 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  if (!validateApiKeyField(body as Record<string, unknown>)) {
+    return NextResponse.json(
+      { error: "Invalid apiKey: must be a string" },
+      { status: 400 }
+    );
+  }
+
   // Use client-provided API key, fall back to env variable
   const clientKey = body.apiKey?.trim();
-  const apiKey = clientKey || process.env.GEMINI_API_KEY;
-  if (!apiKey) {
+  const rawApiKey = clientKey || process.env.GEMINI_API_KEY;
+  if (!rawApiKey) {
     return NextResponse.json(
       { error: "No API key provided. Please add your Gemini API key in Settings, or configure a server default." },
       { status: 401 }
     );
   }
+  const apiKey = encodeURIComponent(rawApiKey);
 
   const MAX_INPUT_LENGTH = 50_000;
   if (body.resume.length > MAX_INPUT_LENGTH || body.jobDescription.length > MAX_INPUT_LENGTH) {

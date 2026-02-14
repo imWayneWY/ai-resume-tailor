@@ -1,30 +1,57 @@
 "use client";
 
-import { useState, useEffect } from "react";
-
-const STORAGE_KEY = "gemini-api-key";
+import { useState, useEffect, useRef } from "react";
+import { GEMINI_API_KEY_STORAGE_KEY } from "@/lib/constants";
 
 export default function SettingsPage() {
   const [apiKey, setApiKey] = useState("");
   const [saved, setSaved] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [storageError, setStorageError] = useState("");
+  const savedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      setApiKey(stored);
+    try {
+      const stored = localStorage.getItem(GEMINI_API_KEY_STORAGE_KEY);
+      if (stored) {
+        setApiKey(stored);
+      }
+    } catch (error) {
+      console.error("Failed to read API key from localStorage", error);
+    } finally {
+      setLoaded(true);
     }
-    setLoaded(true);
+
+    return () => {
+      if (savedTimeoutRef.current) {
+        clearTimeout(savedTimeoutRef.current);
+      }
+    };
   }, []);
 
   const handleSave = () => {
-    localStorage.setItem(STORAGE_KEY, apiKey.trim());
+    setStorageError("");
+    try {
+      localStorage.setItem(GEMINI_API_KEY_STORAGE_KEY, apiKey.trim());
+    } catch {
+      setStorageError("Failed to save — browser storage may be full or disabled.");
+      return;
+    }
     setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
+    if (savedTimeoutRef.current) {
+      clearTimeout(savedTimeoutRef.current);
+    }
+    savedTimeoutRef.current = setTimeout(() => setSaved(false), 3000);
   };
 
   const handleClear = () => {
-    localStorage.removeItem(STORAGE_KEY);
+    setStorageError("");
+    try {
+      localStorage.removeItem(GEMINI_API_KEY_STORAGE_KEY);
+    } catch {
+      setStorageError("Failed to clear — browser storage may be disabled.");
+      return;
+    }
     setApiKey("");
     setSaved(false);
   };
@@ -60,14 +87,16 @@ export default function SettingsPage() {
             onChange={(e) => {
               setApiKey(e.target.value);
               setSaved(false);
+              setStorageError("");
             }}
             placeholder="Enter your Gemini API key"
             className="rounded-lg border border-border bg-white p-3 text-sm placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none"
           />
 
           <p className="text-xs text-muted leading-relaxed">
-            Your API key is stored locally in your browser and never saved on
-            our server. If no key is provided, the server&apos;s default key
+            Your API key is stored locally in your browser. It may be sent to
+            our server to process requests, but it is not stored or logged
+            server-side. If no key is provided, the server&apos;s default key
             will be used (if configured).
           </p>
 
@@ -91,6 +120,15 @@ export default function SettingsPage() {
               </span>
             )}
           </div>
+
+          {storageError && (
+            <div
+              role="alert"
+              className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+            >
+              {storageError}
+            </div>
+          )}
         </div>
       </div>
     </main>

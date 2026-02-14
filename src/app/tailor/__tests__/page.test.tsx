@@ -377,7 +377,7 @@ describe("TailorPage", () => {
 
     const fileInput = screen.getByLabelText(/upload pdf resume/i);
     // Create a file > 10MB
-    const bigContent = new Array(10 * 1024 * 1024 + 1).fill("a").join("");
+    const bigContent = "a".repeat(10 * 1024 * 1024 + 1);
     const file = new File([bigContent], "big.pdf", { type: "application/pdf" });
 
     fireEvent.change(fileInput, { target: { files: [file] } });

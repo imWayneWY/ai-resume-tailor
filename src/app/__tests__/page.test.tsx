@@ -1,3 +1,4 @@
+import React, { type ReactNode } from "react";
 import { render, screen } from "@testing-library/react";
 import Home from "../page";
 
@@ -11,7 +12,7 @@ jest.mock("next/link", () => {
       ...rest
     }: {
       href: string;
-      children: React.ReactNode;
+      children: ReactNode;
       [key: string]: unknown;
     }) => (
       <a href={href} {...rest}>

@@ -105,8 +105,11 @@ describe("ResumePdf", () => {
     );
     expect(html).toContain("Line 1");
     expect(html).toContain("Line 3");
-    // Empty line should render as space character
-    expect(html).toContain(" ");
+    // Empty line should render as a Text node whose content is exactly a single space,
+    // appearing between the Text nodes for "Line 1" and "Line 3".
+    const textSequenceRegex =
+      /<div[^>]*data-component="Text"[^>]*>\s*Line 1\s*<\/div>\s*<div[^>]*data-component="Text"[^>]*>\s* \s*<\/div>\s*<div[^>]*data-component="Text"[^>]*>\s*Line 3\s*<\/div>/;
+    expect(html).toMatch(textSequenceRegex);
   });
 
   it("renders multiple body sections after header", () => {

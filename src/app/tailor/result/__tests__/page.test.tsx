@@ -1,3 +1,4 @@
+import React, { type ReactNode } from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ResultPage from "../page";
@@ -16,10 +17,10 @@ jest.mock("@react-pdf/renderer", () => ({
   pdf: jest.fn(() => ({
     toBlob: jest.fn().mockResolvedValue(new Blob(["pdf"], { type: "application/pdf" })),
   })),
-  Document: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  Page: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  View: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  Text: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
+  Document: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  Page: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  View: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  Text: ({ children }: { children: ReactNode }) => <span>{children}</span>,
   StyleSheet: { create: (s: Record<string, unknown>) => s },
 }));
 
@@ -240,14 +241,10 @@ describe("ResultPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows Loading text when result is null initially", () => {
-    // No sessionStorage data, but before redirect happens
-    // The component shows "Loading…" before the effect fires
-    // We need to test the null state
-    const { container } = render(<ResultPage />);
-    // The loading state should render before the redirect effect
-    // But since effects run synchronously in test, the redirect happens first
-    // So we just verify the redirect happens
+  it("redirects to /tailor when result is null (no sessionStorage data)", () => {
+    // With no sessionStorage data, the component has no valid result
+    // and redirects to /tailor via the useEffect
+    render(<ResultPage />);
     expect(mockReplace).toHaveBeenCalledWith("/tailor");
   });
 });

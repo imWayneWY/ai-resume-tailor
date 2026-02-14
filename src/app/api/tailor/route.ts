@@ -34,6 +34,7 @@ interface TailorRequest {
   resume: string;
   jobDescription: string;
   generateCoverLetter: boolean;
+  apiKey?: string;
 }
 
 function validateRequest(
@@ -41,24 +42,23 @@ function validateRequest(
 ): body is TailorRequest {
   if (!body || typeof body !== "object") return false;
   const b = body as Record<string, unknown>;
-  return (
-    typeof b.resume === "string" &&
-    b.resume.trim().length > 0 &&
-    typeof b.jobDescription === "string" &&
-    b.jobDescription.trim().length > 0 &&
-    typeof b.generateCoverLetter === "boolean"
-  );
+  if (
+    typeof b.resume !== "string" ||
+    b.resume.trim().length === 0 ||
+    typeof b.jobDescription !== "string" ||
+    b.jobDescription.trim().length === 0 ||
+    typeof b.generateCoverLetter !== "boolean"
+  ) {
+    return false;
+  }
+  // apiKey is optional, but if present must be a string
+  if ("apiKey" in b && b.apiKey !== undefined && typeof b.apiKey !== "string") {
+    return false;
+  }
+  return true;
 }
 
 export async function POST(request: NextRequest) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json(
-      { error: "Gemini API key not configured" },
-      { status: 500 }
-    );
-  }
-
   let body: unknown;
   try {
     body = await request.json();
@@ -73,6 +73,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { error: "Missing required fields: resume, jobDescription, generateCoverLetter" },
       { status: 400 }
+    );
+  }
+
+  // Use client-provided API key, fall back to env variable
+  const clientKey = body.apiKey?.trim();
+  const apiKey = clientKey || process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return NextResponse.json(
+      { error: "No API key provided. Please add your Gemini API key in Settings, or configure a server default." },
+      { status: 401 }
     );
   }
 

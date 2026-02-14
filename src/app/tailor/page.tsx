@@ -85,10 +85,22 @@ export default function TailorPage() {
     setIsLoading(true);
 
     try {
+      // Read API key from localStorage if available
+      const storedApiKey = localStorage.getItem("gemini-api-key");
+
+      const requestBody: Record<string, unknown> = {
+        resume,
+        jobDescription,
+        generateCoverLetter,
+      };
+      if (storedApiKey) {
+        requestBody.apiKey = storedApiKey;
+      }
+
       const response = await fetch("/api/tailor", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ resume, jobDescription, generateCoverLetter }),
+        body: JSON.stringify(requestBody),
       });
 
       const contentType = response.headers.get("content-type") || "";

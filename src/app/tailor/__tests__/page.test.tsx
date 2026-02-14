@@ -46,6 +46,31 @@ Object.defineProperty(window, "sessionStorage", {
   value: sessionStorageMock,
 });
 
+// Mock localStorage
+const localStorageMock = (() => {
+  let store: Record<string, string> = {};
+  return {
+    getItem: jest.fn((key: string) => store[key] ?? null),
+    setItem: jest.fn((key: string, value: string) => {
+      store[key] = value;
+    }),
+    removeItem: jest.fn((key: string) => {
+      delete store[key];
+    }),
+    clear: jest.fn(() => {
+      store = {};
+    }),
+    get length() {
+      return Object.keys(store).length;
+    },
+    key: jest.fn((i: number) => Object.keys(store)[i] ?? null),
+  };
+})();
+
+Object.defineProperty(window, "localStorage", {
+  value: localStorageMock,
+});
+
 beforeEach(() => {
   mockFetch = jest.fn();
   global.fetch = mockFetch;
@@ -53,6 +78,8 @@ beforeEach(() => {
   sessionStorageMock.clear();
   sessionStorageMock.getItem.mockClear();
   sessionStorageMock.setItem.mockClear();
+  localStorageMock.clear();
+  localStorageMock.getItem.mockClear();
 });
 
 afterEach(() => {
@@ -434,7 +461,7 @@ describe("TailorPage", () => {
     });
   });
 
-  it("sends correct request body to /api/tailor", async () => {
+  it("sends correct request body to /api/tailor (no API key stored)", async () => {
     const user = userEvent.setup();
     mockFetch.mockResolvedValueOnce(
       createMockResponse(
@@ -467,6 +494,67 @@ describe("TailorPage", () => {
           generateCoverLetter: false,
         }),
       });
+    });
+  });
+
+  it("includes API key in request body when stored in localStorage", async () => {
+    localStorageMock.setItem("gemini-api-key", "user-api-key-123");
+    localStorageMock.getItem.mockClear();
+
+    const user = userEvent.setup();
+    mockFetch.mockResolvedValueOnce(
+      createMockResponse(
+        JSON.stringify({ sections: [{ title: "S", content: "C" }] }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      )
+    );
+
+    render(<TailorPage />);
+
+    await user.type(
+      screen.getByPlaceholderText(/paste your full resume/i),
+      "My resume"
+    );
+    await user.type(
+      screen.getByPlaceholderText(/paste the job description/i),
+      "Job desc"
+    );
+    await user.click(
+      screen.getByRole("button", { name: /tailor resume/i })
+    );
+
+    await waitFor(() => {
+      const fetchBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(fetchBody.apiKey).toBe("user-api-key-123");
+    });
+  });
+
+  it("does not include apiKey field when no key in localStorage", async () => {
+    const user = userEvent.setup();
+    mockFetch.mockResolvedValueOnce(
+      createMockResponse(
+        JSON.stringify({ sections: [{ title: "S", content: "C" }] }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      )
+    );
+
+    render(<TailorPage />);
+
+    await user.type(
+      screen.getByPlaceholderText(/paste your full resume/i),
+      "My resume"
+    );
+    await user.type(
+      screen.getByPlaceholderText(/paste the job description/i),
+      "Job desc"
+    );
+    await user.click(
+      screen.getByRole("button", { name: /tailor resume/i })
+    );
+
+    await waitFor(() => {
+      const fetchBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(fetchBody.apiKey).toBeUndefined();
     });
   });
 

@@ -66,12 +66,89 @@ afterEach(() => {
 
 describe("POST /api/tailor", () => {
   // --- Config / env ---
-  it("returns 500 when GEMINI_API_KEY is not set", async () => {
+  it("returns 401 when no API key is available (no client key, no env key)", async () => {
     delete process.env.GEMINI_API_KEY;
     const res = await POST(makeRequest(validBody));
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(401);
     const json = await res.json();
-    expect(json.error).toMatch(/API key not configured/i);
+    expect(json.error).toMatch(/no api key provided/i);
+  });
+
+  it("uses client-provided apiKey when present", async () => {
+    delete process.env.GEMINI_API_KEY;
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify(validGeminiResponse), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    const res = await POST(
+      makeRequest({ ...validBody, apiKey: "client-key-123" })
+    );
+    expect(res.status).toBe(200);
+
+    const url = mockFetch.mock.calls[0][0];
+    expect(url).toContain("key=client-key-123");
+  });
+
+  it("falls back to env key when client apiKey is not provided", async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify(validGeminiResponse), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    const res = await POST(makeRequest(validBody));
+    expect(res.status).toBe(200);
+
+    const url = mockFetch.mock.calls[0][0];
+    expect(url).toContain("key=test-api-key");
+  });
+
+  it("prefers client apiKey over env key", async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify(validGeminiResponse), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    const res = await POST(
+      makeRequest({ ...validBody, apiKey: "client-preferred" })
+    );
+    expect(res.status).toBe(200);
+
+    const url = mockFetch.mock.calls[0][0];
+    expect(url).toContain("key=client-preferred");
+    expect(url).not.toContain("key=test-api-key");
+  });
+
+  it("falls back to env key when client apiKey is empty string", async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify(validGeminiResponse), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    const res = await POST(
+      makeRequest({ ...validBody, apiKey: "   " })
+    );
+    expect(res.status).toBe(200);
+
+    const url = mockFetch.mock.calls[0][0];
+    expect(url).toContain("key=test-api-key");
+  });
+
+  it("returns 400 when apiKey is not a string", async () => {
+    const res = await POST(
+      makeRequest({ ...validBody, apiKey: 12345 })
+    );
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toMatch(/missing required fields/i);
   });
 
   // --- Input validation ---

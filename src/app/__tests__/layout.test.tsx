@@ -80,6 +80,12 @@ describe("Layout", () => {
       expect(getStartedLink).toBeTruthy();
       expect(getStartedLink?.getAttribute("href")).toBe("/tailor");
 
+      // Check Settings link in navbar
+      const settingsLink = Array.from(links).find(
+        (a) => a.getAttribute("href") === "/settings"
+      );
+      expect(settingsLink).toBeTruthy();
+
       // Check footer
       const footer = container.querySelector("footer");
       expect(footer).toBeTruthy();

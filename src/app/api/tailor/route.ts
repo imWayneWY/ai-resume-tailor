@@ -34,6 +34,7 @@ interface TailorRequest {
   resume: string;
   jobDescription: string;
   generateCoverLetter: boolean;
+  apiKey?: string;
 }
 
 function validateRequest(
@@ -50,15 +51,14 @@ function validateRequest(
   );
 }
 
-export async function POST(request: NextRequest) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json(
-      { error: "Gemini API key not configured" },
-      { status: 500 }
-    );
+function validateApiKeyField(body: Record<string, unknown>): boolean {
+  if ("apiKey" in body && body.apiKey !== undefined && typeof body.apiKey !== "string") {
+    return false;
   }
+  return true;
+}
 
+export async function POST(request: NextRequest) {
   let body: unknown;
   try {
     body = await request.json();
@@ -75,6 +75,24 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     );
   }
+
+  if (!validateApiKeyField(body as Record<string, unknown>)) {
+    return NextResponse.json(
+      { error: "Invalid apiKey: must be a string" },
+      { status: 400 }
+    );
+  }
+
+  // Use client-provided API key, fall back to env variable
+  const clientKey = body.apiKey?.trim();
+  const rawApiKey = clientKey || process.env.GEMINI_API_KEY;
+  if (!rawApiKey) {
+    return NextResponse.json(
+      { error: "No API key provided. Please add your Gemini API key in Settings, or configure a server default." },
+      { status: 401 }
+    );
+  }
+  const apiKey = encodeURIComponent(rawApiKey);
 
   const MAX_INPUT_LENGTH = 50_000;
   if (body.resume.length > MAX_INPUT_LENGTH || body.jobDescription.length > MAX_INPUT_LENGTH) {

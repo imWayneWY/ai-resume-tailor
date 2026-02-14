@@ -3,6 +3,7 @@
 import type React from "react";
 import { useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { GEMINI_API_KEY_STORAGE_KEY } from "@/lib/constants";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
@@ -85,10 +86,27 @@ export default function TailorPage() {
     setIsLoading(true);
 
     try {
+      // Read API key from localStorage if available
+      let storedApiKey: string | null = null;
+      try {
+        storedApiKey = localStorage.getItem(GEMINI_API_KEY_STORAGE_KEY);
+      } catch {
+        // localStorage unavailable — proceed without key
+      }
+
+      const requestBody: Record<string, unknown> = {
+        resume,
+        jobDescription,
+        generateCoverLetter,
+      };
+      if (storedApiKey && storedApiKey.trim().length > 0) {
+        requestBody.apiKey = storedApiKey;
+      }
+
       const response = await fetch("/api/tailor", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ resume, jobDescription, generateCoverLetter }),
+        body: JSON.stringify(requestBody),
       });
 
       const contentType = response.headers.get("content-type") || "";

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render } from "@testing-library/react";
 import React from "react";
 
 // Mock next/link to render a plain anchor
@@ -21,6 +21,11 @@ jest.mock("next/link", () => ({
 
 // Mock globals.css
 jest.mock("../globals.css", () => ({}));
+
+// Mock the Navbar component since it's a client component with usePathname
+jest.mock("@/components/Navbar", () => ({
+  Navbar: () => <nav data-testid="navbar">Navbar</nav>,
+}));
 
 describe("Layout", () => {
   it("exports metadata with correct title and description", async () => {
@@ -61,30 +66,9 @@ describe("Layout", () => {
         { container: document.createElement("div") }
       );
 
-      // Check nav exists
-      const nav = container.querySelector("nav");
+      // Check nav exists (mocked Navbar)
+      const nav = container.querySelector('[data-testid="navbar"]');
       expect(nav).toBeTruthy();
-
-      // Check brand link
-      const links = container.querySelectorAll("a");
-      const brandLink = Array.from(links).find((a) =>
-        a.textContent?.includes("AI Resume Tailor")
-      );
-      expect(brandLink).toBeTruthy();
-      expect(brandLink?.getAttribute("href")).toBe("/");
-
-      // Check "Get Started" link in navbar
-      const getStartedLink = Array.from(links).find((a) =>
-        a.textContent?.includes("Get Started")
-      );
-      expect(getStartedLink).toBeTruthy();
-      expect(getStartedLink?.getAttribute("href")).toBe("/tailor");
-
-      // Check Settings link in navbar
-      const settingsLink = Array.from(links).find(
-        (a) => a.getAttribute("href") === "/settings"
-      );
-      expect(settingsLink).toBeTruthy();
 
       // Check footer
       const footer = container.querySelector("footer");

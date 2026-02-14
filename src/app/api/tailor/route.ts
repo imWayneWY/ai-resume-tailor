@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (!validateApiKeyField(body as Record<string, unknown>)) {
+  if (!validateApiKeyField(body as unknown as Record<string, unknown>)) {
     return NextResponse.json(
       { error: "Invalid apiKey: must be a string" },
       { status: 400 }

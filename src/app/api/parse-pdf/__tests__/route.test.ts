@@ -3,14 +3,14 @@
  */
 import { POST } from "../route";
 
-// ---------- mock pdf-parse ----------
+// ---------- mock unpdf ----------
 
-const mockGetText = jest.fn();
+const mockGetDocumentProxy = jest.fn();
+const mockExtractText = jest.fn();
 
-jest.mock("pdf-parse", () => ({
-  PDFParse: jest.fn().mockImplementation(() => ({
-    getText: mockGetText,
-  })),
+jest.mock("unpdf", () => ({
+  getDocumentProxy: (...args: unknown[]) => mockGetDocumentProxy(...args),
+  extractText: (...args: unknown[]) => mockExtractText(...args),
 }));
 
 // ---------- helpers ----------
@@ -43,8 +43,12 @@ function makePdfBlob(content = "fake pdf content", size?: number): Blob {
 // ---------- tests ----------
 
 describe("POST /api/parse-pdf", () => {
+  const fakePdfProxy = { numPages: 1 };
+
   beforeEach(() => {
-    mockGetText.mockReset();
+    mockGetDocumentProxy.mockReset();
+    mockExtractText.mockReset();
+    mockGetDocumentProxy.mockResolvedValue(fakePdfProxy);
   });
 
   it("returns 400 when no file is provided", async () => {
@@ -85,7 +89,8 @@ describe("POST /api/parse-pdf", () => {
   });
 
   it("returns extracted text on successful parse", async () => {
-    mockGetText.mockResolvedValueOnce({
+    mockExtractText.mockResolvedValueOnce({
+      totalPages: 1,
       text: "John Doe\nSoftware Engineer\n5 years experience",
     });
 
@@ -97,7 +102,8 @@ describe("POST /api/parse-pdf", () => {
   });
 
   it("returns 422 when extracted text is empty", async () => {
-    mockGetText.mockResolvedValueOnce({
+    mockExtractText.mockResolvedValueOnce({
+      totalPages: 1,
       text: "   ",
     });
 
@@ -108,9 +114,9 @@ describe("POST /api/parse-pdf", () => {
     expect(json.error).toMatch(/could not extract/i);
   });
 
-  it("returns 500 when pdf-parse throws (corrupted file)", async () => {
+  it("returns 500 when unpdf throws (corrupted file)", async () => {
     const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => {});
-    mockGetText.mockRejectedValueOnce(new Error("Invalid PDF structure"));
+    mockGetDocumentProxy.mockRejectedValueOnce(new Error("Invalid PDF structure"));
 
     const pdf = makePdfBlob();
     const res = await POST(makeFormDataRequest(pdf));
@@ -137,7 +143,8 @@ describe("POST /api/parse-pdf", () => {
   });
 
   it("trims whitespace from extracted text", async () => {
-    mockGetText.mockResolvedValueOnce({
+    mockExtractText.mockResolvedValueOnce({
+      totalPages: 1,
       text: "  \n  Hello World  \n  ",
     });
 
@@ -150,7 +157,8 @@ describe("POST /api/parse-pdf", () => {
 
   it("handles multi-page PDF text correctly", async () => {
     const multiPageText = "Page 1 content\n\nPage 2 content\n\nPage 3 content";
-    mockGetText.mockResolvedValueOnce({
+    mockExtractText.mockResolvedValueOnce({
+      totalPages: 3,
       text: multiPageText,
     });
 

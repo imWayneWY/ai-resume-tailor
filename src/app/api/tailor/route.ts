@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { ModelProvider } from "@/lib/constants";
 
 const GEMINI_API_URL =
   "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
+
+const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
+const GROQ_MODEL = "llama-3.3-70b-versatile";
 
 const SYSTEM_PROMPT = `You are an expert resume writer and ATS (Applicant Tracking System) optimizer. Your job is to tailor a candidate's master resume to a specific job description.
 
@@ -35,6 +39,7 @@ interface TailorRequest {
   jobDescription: string;
   generateCoverLetter: boolean;
   apiKey?: string;
+  provider?: ModelProvider;
 }
 
 function validateRequest(
@@ -58,6 +63,182 @@ function validateApiKeyField(body: unknown): boolean {
     return false;
   }
   return true;
+}
+
+function validateProviderField(body: unknown): boolean {
+  if (!body || typeof body !== "object") return true;
+  const b = body as Record<string, unknown>;
+  if ("provider" in b && b.provider !== undefined) {
+    return b.provider === "gemini" || b.provider === "groq";
+  }
+  return true;
+}
+
+function buildUserPrompt(
+  resume: string,
+  jobDescription: string,
+  generateCoverLetter: boolean
+): string {
+  return `Here is the candidate's master resume:
+
+---
+${resume}
+---
+
+Here is the job description to tailor for:
+
+---
+${jobDescription}
+---
+
+${generateCoverLetter ? "Please also generate a cover letter that addresses any skill gaps and highlights the candidate's strongest relevant qualifications." : "Do NOT include a coverLetter field in the output."}
+
+Respond with ONLY the JSON object, no markdown fences or extra text.`;
+}
+
+async function callGemini(
+  apiKey: string,
+  userPrompt: string
+): Promise<NextResponse> {
+  const encodedKey = encodeURIComponent(apiKey);
+
+  const response = await fetch(`${GEMINI_API_URL}?key=${encodedKey}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      system_instruction: {
+        parts: [{ text: SYSTEM_PROMPT }],
+      },
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: userPrompt }],
+        },
+      ],
+      generationConfig: {
+        temperature: 0.7,
+        topP: 0.9,
+        responseMimeType: "application/json",
+      },
+    }),
+  });
+
+  if (response.status === 429) {
+    return NextResponse.json(
+      { error: "Rate limited — please wait a moment and try again" },
+      { status: 429 }
+    );
+  }
+
+  if (!response.ok) {
+    await response.text();
+    return NextResponse.json(
+      { error: `Gemini API error (${response.status})` },
+      { status: 502 }
+    );
+  }
+
+  const data = await response.json();
+  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+  if (!text) {
+    return NextResponse.json(
+      { error: "Unexpected response from Gemini" },
+      { status: 502 }
+    );
+  }
+
+  return parseAndValidateResponse(text);
+}
+
+async function callGroq(
+  apiKey: string,
+  userPrompt: string
+): Promise<NextResponse> {
+  const response = await fetch(GROQ_API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: GROQ_MODEL,
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: userPrompt },
+      ],
+      temperature: 0.7,
+      top_p: 0.9,
+      response_format: { type: "json_object" },
+    }),
+  });
+
+  if (response.status === 429) {
+    return NextResponse.json(
+      { error: "Rate limited — please wait a moment and try again" },
+      { status: 429 }
+    );
+  }
+
+  if (!response.ok) {
+    await response.text();
+    return NextResponse.json(
+      { error: `Groq API error (${response.status})` },
+      { status: 502 }
+    );
+  }
+
+  const data = await response.json();
+  const text = data?.choices?.[0]?.message?.content;
+
+  if (!text) {
+    return NextResponse.json(
+      { error: "Unexpected response from Groq" },
+      { status: 502 }
+    );
+  }
+
+  return parseAndValidateResponse(text);
+}
+
+function parseAndValidateResponse(text: string): NextResponse {
+  let parsed: { sections: { title: string; content: string }[]; coverLetter?: string };
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return NextResponse.json(
+      { error: "Failed to parse AI response" },
+      { status: 502 }
+    );
+  }
+
+  if (!Array.isArray(parsed.sections) || parsed.sections.length === 0) {
+    return NextResponse.json(
+      { error: "AI returned invalid resume structure" },
+      { status: 502 }
+    );
+  }
+
+  const hasInvalidSection = parsed.sections.some(
+    (section) =>
+      !section ||
+      typeof section.title !== "string" ||
+      typeof section.content !== "string"
+  );
+
+  const hasInvalidCoverLetter =
+    "coverLetter" in parsed &&
+    parsed.coverLetter !== undefined &&
+    typeof parsed.coverLetter !== "string";
+
+  if (hasInvalidSection || hasInvalidCoverLetter) {
+    return NextResponse.json(
+      { error: "AI returned invalid resume structure" },
+      { status: 502 }
+    );
+  }
+
+  return NextResponse.json(parsed);
 }
 
 export async function POST(request: NextRequest) {
@@ -85,16 +266,27 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  if (!validateProviderField(body)) {
+    return NextResponse.json(
+      { error: "Invalid provider: must be 'gemini' or 'groq'" },
+      { status: 400 }
+    );
+  }
+
+  const provider: ModelProvider = body.provider || "gemini";
+
   // Use client-provided API key, fall back to env variable
   const clientKey = body.apiKey?.trim();
-  const rawApiKey = clientKey || process.env.GEMINI_API_KEY;
+  const envKey = provider === "groq" ? process.env.GROQ_API_KEY : process.env.GEMINI_API_KEY;
+  const rawApiKey = clientKey || envKey;
+
   if (!rawApiKey) {
+    const providerName = provider === "groq" ? "Groq" : "Gemini";
     return NextResponse.json(
-      { error: "No API key provided. Please add your Gemini API key in Settings, or configure a server default." },
+      { error: `No API key provided. Please add your ${providerName} API key in Settings, or configure a server default.` },
       { status: 401 }
     );
   }
-  const apiKey = encodeURIComponent(rawApiKey);
 
   const MAX_INPUT_LENGTH = 50_000;
   if (body.resume.length > MAX_INPUT_LENGTH || body.jobDescription.length > MAX_INPUT_LENGTH) {
@@ -105,110 +297,13 @@ export async function POST(request: NextRequest) {
   }
 
   const { resume, jobDescription, generateCoverLetter } = body;
-
-  const userPrompt = `Here is the candidate's master resume:
-
----
-${resume}
----
-
-Here is the job description to tailor for:
-
----
-${jobDescription}
----
-
-${generateCoverLetter ? "Please also generate a cover letter that addresses any skill gaps and highlights the candidate's strongest relevant qualifications." : "Do NOT include a coverLetter field in the output."}
-
-Respond with ONLY the JSON object, no markdown fences or extra text.`;
+  const userPrompt = buildUserPrompt(resume, jobDescription, generateCoverLetter);
 
   try {
-    const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        system_instruction: {
-          parts: [{ text: SYSTEM_PROMPT }],
-        },
-        contents: [
-          {
-            role: "user",
-            parts: [{ text: userPrompt }],
-          },
-        ],
-        generationConfig: {
-          temperature: 0.7,
-          topP: 0.9,
-          responseMimeType: "application/json",
-        },
-      }),
-    });
-
-    if (response.status === 429) {
-      return NextResponse.json(
-        { error: "Rate limited — please wait a moment and try again" },
-        { status: 429 }
-      );
+    if (provider === "groq") {
+      return await callGroq(rawApiKey, userPrompt);
     }
-
-    if (!response.ok) {
-      // Consume body to prevent memory leak
-      await response.text();
-      return NextResponse.json(
-        { error: `Gemini API error (${response.status})` },
-        { status: 502 }
-      );
-    }
-
-    const data = await response.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-
-    if (!text) {
-      return NextResponse.json(
-        { error: "Unexpected response from Gemini" },
-        { status: 502 }
-      );
-    }
-
-    // Parse the JSON from Gemini's response
-    let parsed: { sections: { title: string; content: string }[]; coverLetter?: string };
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      return NextResponse.json(
-        { error: "Failed to parse AI response" },
-        { status: 502 }
-      );
-    }
-
-    // Validate structure
-    if (!Array.isArray(parsed.sections) || parsed.sections.length === 0) {
-      return NextResponse.json(
-        { error: "AI returned invalid resume structure" },
-        { status: 502 }
-      );
-    }
-
-    const hasInvalidSection = parsed.sections.some(
-      (section) =>
-        !section ||
-        typeof section.title !== "string" ||
-        typeof section.content !== "string"
-    );
-
-    const hasInvalidCoverLetter =
-      "coverLetter" in parsed &&
-      parsed.coverLetter !== undefined &&
-      typeof parsed.coverLetter !== "string";
-
-    if (hasInvalidSection || hasInvalidCoverLetter) {
-      return NextResponse.json(
-        { error: "AI returned invalid resume structure" },
-        { status: 502 }
-      );
-    }
-
-    return NextResponse.json(parsed);
+    return await callGemini(rawApiKey, userPrompt);
   } catch {
     return NextResponse.json(
       { error: "Internal server error" },

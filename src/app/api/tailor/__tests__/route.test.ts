@@ -46,6 +46,21 @@ const validGeminiResponse = {
   ],
 };
 
+const validGroqResponse = {
+  choices: [
+    {
+      message: {
+        content: JSON.stringify({
+          sections: [
+            { title: "Summary", content: "Experienced engineer..." },
+            { title: "Skills", content: "Python, Go, Rust" },
+          ],
+        }),
+      },
+    },
+  ],
+};
+
 // ---------- mocks ----------
 
 const originalFetch = global.fetch;
@@ -55,11 +70,13 @@ beforeEach(() => {
   mockFetch = jest.fn();
   global.fetch = mockFetch;
   process.env.GEMINI_API_KEY = "test-api-key";
+  process.env.GROQ_API_KEY = "test-groq-key";
 });
 
 afterEach(() => {
   global.fetch = originalFetch;
   delete process.env.GEMINI_API_KEY;
+  delete process.env.GROQ_API_KEY;
 });
 
 // ---------- tests ----------
@@ -149,6 +166,31 @@ describe("POST /api/tailor", () => {
     expect(res.status).toBe(400);
     const json = await res.json();
     expect(json.error).toMatch(/invalid apiKey/i);
+  });
+
+  // --- Provider validation ---
+  it("returns 400 when provider is invalid", async () => {
+    const res = await POST(
+      makeRequest({ ...validBody, provider: "openai" })
+    );
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toMatch(/invalid provider/i);
+  });
+
+  it("defaults to gemini when provider is not specified", async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify(validGeminiResponse), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    const res = await POST(makeRequest(validBody));
+    expect(res.status).toBe(200);
+
+    const url = mockFetch.mock.calls[0][0];
+    expect(url).toContain("generativelanguage.googleapis.com");
   });
 
   // --- Input validation ---
@@ -480,5 +522,219 @@ describe("POST /api/tailor", () => {
     const fetchBody = JSON.parse(mockFetch.mock.calls[0][1].body);
     const userText = fetchBody.contents[0].parts[0].text;
     expect(userText).toMatch(/do not include a coverLetter/i);
+  });
+
+  // --- Groq API integration ---
+  it("routes to Groq when provider is 'groq'", async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify(validGroqResponse), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    const res = await POST(makeRequest({ ...validBody, provider: "groq" }));
+    expect(res.status).toBe(200);
+
+    const url = mockFetch.mock.calls[0][0];
+    expect(url).toContain("api.groq.com");
+  });
+
+  it("returns tailored resume on successful Groq response", async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify(validGroqResponse), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    const res = await POST(makeRequest({ ...validBody, provider: "groq" }));
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.sections).toHaveLength(2);
+    expect(json.sections[0].title).toBe("Summary");
+    expect(json.sections[1].title).toBe("Skills");
+  });
+
+  it("sends Bearer token to Groq API (not query param)", async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify(validGroqResponse), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    await POST(makeRequest({ ...validBody, provider: "groq" }));
+
+    const fetchOptions = mockFetch.mock.calls[0][1];
+    expect(fetchOptions.headers.Authorization).toBe("Bearer test-groq-key");
+  });
+
+  it("uses client-provided apiKey for Groq when present", async () => {
+    delete process.env.GROQ_API_KEY;
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify(validGroqResponse), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    const res = await POST(
+      makeRequest({ ...validBody, provider: "groq", apiKey: "client-groq-key" })
+    );
+    expect(res.status).toBe(200);
+
+    const fetchOptions = mockFetch.mock.calls[0][1];
+    expect(fetchOptions.headers.Authorization).toBe("Bearer client-groq-key");
+  });
+
+  it("falls back to GROQ_API_KEY env var for Groq provider", async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify(validGroqResponse), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    const res = await POST(makeRequest({ ...validBody, provider: "groq" }));
+    expect(res.status).toBe(200);
+
+    const fetchOptions = mockFetch.mock.calls[0][1];
+    expect(fetchOptions.headers.Authorization).toBe("Bearer test-groq-key");
+  });
+
+  it("returns 401 when no Groq API key is available", async () => {
+    delete process.env.GROQ_API_KEY;
+    const res = await POST(makeRequest({ ...validBody, provider: "groq" }));
+    expect(res.status).toBe(401);
+    const json = await res.json();
+    expect(json.error).toMatch(/groq api key/i);
+  });
+
+  it("sends correct request body to Groq (OpenAI-compatible format)", async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify(validGroqResponse), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    await POST(makeRequest({ ...validBody, provider: "groq" }));
+
+    const fetchBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(fetchBody.model).toBe("llama-3.3-70b-versatile");
+    expect(fetchBody.messages).toHaveLength(2);
+    expect(fetchBody.messages[0].role).toBe("system");
+    expect(fetchBody.messages[1].role).toBe("user");
+    expect(fetchBody.temperature).toBe(0.7);
+    expect(fetchBody.top_p).toBe(0.9);
+    expect(fetchBody.response_format).toEqual({ type: "json_object" });
+  });
+
+  it("returns 429 when Groq rate limits", async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response("Rate limited", { status: 429 })
+    );
+    const res = await POST(makeRequest({ ...validBody, provider: "groq" }));
+    expect(res.status).toBe(429);
+    const json = await res.json();
+    expect(json.error).toMatch(/rate limited/i);
+  });
+
+  it("returns 502 on non-ok Groq response", async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response("Internal Server Error", { status: 500 })
+    );
+    const res = await POST(makeRequest({ ...validBody, provider: "groq" }));
+    expect(res.status).toBe(502);
+    const json = await res.json();
+    expect(json.error).toMatch(/Groq API error/i);
+  });
+
+  it("returns 502 when Groq response has no content", async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ choices: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+    const res = await POST(makeRequest({ ...validBody, provider: "groq" }));
+    expect(res.status).toBe(502);
+    const json = await res.json();
+    expect(json.error).toMatch(/unexpected response/i);
+  });
+
+  it("returns 502 when Groq returns invalid JSON text", async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          choices: [
+            { message: { content: "NOT VALID JSON" } },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+    const res = await POST(makeRequest({ ...validBody, provider: "groq" }));
+    expect(res.status).toBe(502);
+    const json = await res.json();
+    expect(json.error).toMatch(/failed to parse/i);
+  });
+
+  it("returns 500 when Groq fetch throws (network error)", async () => {
+    mockFetch.mockRejectedValueOnce(new Error("Network failure"));
+    const res = await POST(makeRequest({ ...validBody, provider: "groq" }));
+    expect(res.status).toBe(500);
+    const json = await res.json();
+    expect(json.error).toMatch(/internal server error/i);
+  });
+
+  it("sends cover letter instruction to Groq when generateCoverLetter is true", async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  sections: [{ title: "Summary", content: "..." }],
+                  coverLetter: "Dear Hiring Manager...",
+                }),
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+
+    const res = await POST(
+      makeRequest({ ...validBody, provider: "groq", generateCoverLetter: true })
+    );
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.coverLetter).toBeDefined();
+
+    const fetchBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+    const userText = fetchBody.messages[1].content;
+    expect(userText).toMatch(/cover letter/i);
+  });
+
+  it("prefers client apiKey over GROQ_API_KEY env var", async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify(validGroqResponse), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    const res = await POST(
+      makeRequest({ ...validBody, provider: "groq", apiKey: "my-client-groq" })
+    );
+    expect(res.status).toBe(200);
+
+    const fetchOptions = mockFetch.mock.calls[0][1];
+    expect(fetchOptions.headers.Authorization).toBe("Bearer my-client-groq");
+    expect(fetchOptions.headers.Authorization).not.toContain("test-groq-key");
   });
 });

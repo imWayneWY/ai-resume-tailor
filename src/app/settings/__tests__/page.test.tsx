@@ -47,12 +47,37 @@ describe("SettingsPage", () => {
     });
   });
 
-  it("renders the API key input as password type", async () => {
+  it("renders the Gemini API key input as password type", async () => {
     render(<SettingsPage />);
     await waitFor(() => {
       const input = screen.getByLabelText(/gemini api key/i);
       expect(input).toBeInTheDocument();
       expect(input).toHaveAttribute("type", "password");
+    });
+  });
+
+  it("renders the Groq API key input as password type", async () => {
+    render(<SettingsPage />);
+    await waitFor(() => {
+      const input = screen.getByLabelText(/groq api key/i);
+      expect(input).toBeInTheDocument();
+      expect(input).toHaveAttribute("type", "password");
+    });
+  });
+
+  it("renders the Model Provider selector", async () => {
+    render(<SettingsPage />);
+    await waitFor(() => {
+      const select = screen.getByLabelText(/model provider/i);
+      expect(select).toBeInTheDocument();
+    });
+  });
+
+  it("defaults to Gemini provider", async () => {
+    render(<SettingsPage />);
+    await waitFor(() => {
+      const select = screen.getByLabelText(/model provider/i) as HTMLSelectElement;
+      expect(select.value).toBe("gemini");
     });
   });
 
@@ -75,14 +100,7 @@ describe("SettingsPage", () => {
     });
   });
 
-  it("Save button is disabled when input is empty", async () => {
-    render(<SettingsPage />);
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /save/i })).toBeDisabled();
-    });
-  });
-
-  it("enables Save button when a key is entered", async () => {
+  it("enables Save button when a Gemini key is entered", async () => {
     const user = userEvent.setup();
     render(<SettingsPage />);
     await waitFor(() => {
@@ -93,37 +111,71 @@ describe("SettingsPage", () => {
     expect(screen.getByRole("button", { name: /save/i })).toBeEnabled();
   });
 
-  it("saves the API key to localStorage and shows confirmation", async () => {
+  it("saves all settings to localStorage and shows confirmation", async () => {
     const user = userEvent.setup();
     render(<SettingsPage />);
     await waitFor(() => {
       expect(screen.getByLabelText(/gemini api key/i)).toBeInTheDocument();
     });
 
-    await user.type(screen.getByLabelText(/gemini api key/i), "my-secret-key");
+    await user.type(screen.getByLabelText(/gemini api key/i), "my-gemini-key");
+    await user.type(screen.getByLabelText(/groq api key/i), "my-groq-key");
     await user.click(screen.getByRole("button", { name: /save/i }));
 
     expect(localStorageMock.setItem).toHaveBeenCalledWith(
       "gemini-api-key",
-      "my-secret-key"
+      "my-gemini-key"
+    );
+    expect(localStorageMock.setItem).toHaveBeenCalledWith(
+      "groq-api-key",
+      "my-groq-key"
+    );
+    expect(localStorageMock.setItem).toHaveBeenCalledWith(
+      "model-provider",
+      "gemini"
     );
     expect(screen.getByRole("status")).toHaveTextContent(/saved/i);
   });
 
-  it("loads existing API key from localStorage on mount", async () => {
-    localStorageMock.setItem("gemini-api-key", "pre-existing-key");
+  it("saves selected provider to localStorage", async () => {
+    const user = userEvent.setup();
+    render(<SettingsPage />);
+    await waitFor(() => {
+      expect(screen.getByLabelText(/model provider/i)).toBeInTheDocument();
+    });
+
+    await user.selectOptions(screen.getByLabelText(/model provider/i), "groq");
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    expect(localStorageMock.setItem).toHaveBeenCalledWith(
+      "model-provider",
+      "groq"
+    );
+  });
+
+  it("loads existing settings from localStorage on mount", async () => {
+    localStorageMock.setItem("gemini-api-key", "pre-existing-gemini-key");
+    localStorageMock.setItem("groq-api-key", "pre-existing-groq-key");
+    localStorageMock.setItem("model-provider", "groq");
     localStorageMock.setItem.mockClear();
 
     render(<SettingsPage />);
     await waitFor(() => {
       expect(screen.getByLabelText(/gemini api key/i)).toHaveValue(
-        "pre-existing-key"
+        "pre-existing-gemini-key"
       );
+      expect(screen.getByLabelText(/groq api key/i)).toHaveValue(
+        "pre-existing-groq-key"
+      );
+      const select = screen.getByLabelText(/model provider/i) as HTMLSelectElement;
+      expect(select.value).toBe("groq");
     });
   });
 
-  it("clears the API key from localStorage", async () => {
+  it("clears all settings from localStorage", async () => {
     localStorageMock.setItem("gemini-api-key", "key-to-clear");
+    localStorageMock.setItem("groq-api-key", "groq-key-to-clear");
+    localStorageMock.setItem("model-provider", "groq");
     localStorageMock.setItem.mockClear();
 
     const user = userEvent.setup();
@@ -137,7 +189,12 @@ describe("SettingsPage", () => {
     await user.click(screen.getByRole("button", { name: /clear/i }));
 
     expect(localStorageMock.removeItem).toHaveBeenCalledWith("gemini-api-key");
+    expect(localStorageMock.removeItem).toHaveBeenCalledWith("groq-api-key");
+    expect(localStorageMock.removeItem).toHaveBeenCalledWith("model-provider");
     expect(screen.getByLabelText(/gemini api key/i)).toHaveValue("");
+    expect(screen.getByLabelText(/groq api key/i)).toHaveValue("");
+    const select = screen.getByLabelText(/model provider/i) as HTMLSelectElement;
+    expect(select.value).toBe("gemini");
   });
 
   it("hides the saved confirmation when input changes after save", async () => {
@@ -155,7 +212,21 @@ describe("SettingsPage", () => {
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
-  it("trims whitespace from the key before saving", async () => {
+  it("hides the saved confirmation when provider changes after save", async () => {
+    const user = userEvent.setup();
+    render(<SettingsPage />);
+    await waitFor(() => {
+      expect(screen.getByLabelText(/model provider/i)).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: /save/i }));
+    expect(screen.getByRole("status")).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText(/model provider/i), "groq");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("trims whitespace from keys before saving", async () => {
     const user = userEvent.setup();
     render(<SettingsPage />);
     await waitFor(() => {
@@ -166,11 +237,19 @@ describe("SettingsPage", () => {
       screen.getByLabelText(/gemini api key/i),
       "  spaced-key  "
     );
+    await user.type(
+      screen.getByLabelText(/groq api key/i),
+      "  groq-spaced  "
+    );
     await user.click(screen.getByRole("button", { name: /save/i }));
 
     expect(localStorageMock.setItem).toHaveBeenCalledWith(
       "gemini-api-key",
       "spaced-key"
+    );
+    expect(localStorageMock.setItem).toHaveBeenCalledWith(
+      "groq-api-key",
+      "groq-spaced"
     );
   });
 
@@ -221,5 +300,39 @@ describe("SettingsPage", () => {
       ).toBeInTheDocument();
     });
     expect(screen.getByLabelText(/gemini api key/i)).toHaveValue("");
+  });
+
+  it("shows Groq option in provider selector", async () => {
+    render(<SettingsPage />);
+    await waitFor(() => {
+      const select = screen.getByLabelText(/model provider/i);
+      const options = select.querySelectorAll("option");
+      const optionValues = Array.from(options).map((o) => o.textContent);
+      expect(optionValues).toContain("Gemini");
+      expect(optionValues).toContain("Groq");
+    });
+  });
+
+  it("can switch provider to Groq", async () => {
+    const user = userEvent.setup();
+    render(<SettingsPage />);
+    await waitFor(() => {
+      expect(screen.getByLabelText(/model provider/i)).toBeInTheDocument();
+    });
+
+    await user.selectOptions(screen.getByLabelText(/model provider/i), "groq");
+    const select = screen.getByLabelText(/model provider/i) as HTMLSelectElement;
+    expect(select.value).toBe("groq");
+  });
+
+  it("ignores invalid provider values in localStorage", async () => {
+    localStorageMock.setItem("model-provider", "invalid-provider");
+    localStorageMock.setItem.mockClear();
+
+    render(<SettingsPage />);
+    await waitFor(() => {
+      const select = screen.getByLabelText(/model provider/i) as HTMLSelectElement;
+      expect(select.value).toBe("gemini");
+    });
   });
 });

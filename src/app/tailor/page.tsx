@@ -3,7 +3,13 @@
 import type React from "react";
 import { useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { GEMINI_API_KEY_STORAGE_KEY } from "@/lib/constants";
+import {
+  GEMINI_API_KEY_STORAGE_KEY,
+  GROQ_API_KEY_STORAGE_KEY,
+  MODEL_PROVIDER_STORAGE_KEY,
+  DEFAULT_MODEL_PROVIDER,
+} from "@/lib/constants";
+import type { ModelProvider } from "@/lib/constants";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
@@ -86,10 +92,16 @@ export default function TailorPage() {
     setIsLoading(true);
 
     try {
-      // Read API key from localStorage if available
+      // Read settings from localStorage
       let storedApiKey: string | null = null;
+      let provider: ModelProvider = DEFAULT_MODEL_PROVIDER;
       try {
-        storedApiKey = localStorage.getItem(GEMINI_API_KEY_STORAGE_KEY);
+        const storedProvider = localStorage.getItem(MODEL_PROVIDER_STORAGE_KEY);
+        if (storedProvider === "gemini" || storedProvider === "groq") {
+          provider = storedProvider;
+        }
+        const keyStorageKey = provider === "groq" ? GROQ_API_KEY_STORAGE_KEY : GEMINI_API_KEY_STORAGE_KEY;
+        storedApiKey = localStorage.getItem(keyStorageKey);
       } catch {
         // localStorage unavailable — proceed without key
       }
@@ -98,6 +110,7 @@ export default function TailorPage() {
         resume,
         jobDescription,
         generateCoverLetter,
+        provider,
       };
       if (storedApiKey && storedApiKey.trim().length > 0) {
         requestBody.apiKey = storedApiKey;

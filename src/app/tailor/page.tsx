@@ -20,6 +20,7 @@ export default function TailorPage() {
   const [generateCoverLetter, setGenerateCoverLetter] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [fileError, setFileError] = useState("");
+  const [isParsing, setIsParsing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [apiError, setApiError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -41,7 +42,7 @@ export default function TailorPage() {
   }, []);
 
   const processFile = useCallback(
-    (file: File) => {
+    async (file: File) => {
       setFileError("");
 
       if (file.type !== "application/pdf") {
@@ -64,7 +65,46 @@ export default function TailorPage() {
         if (!confirmed) return;
       }
 
-      setResume(`[Uploaded: ${file.name}] — PDF parsing coming soon`);
+      setIsParsing(true);
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+
+        const response = await fetch("/api/parse-pdf", {
+          method: "POST",
+          body: formData,
+        });
+
+        const contentType = response.headers.get("content-type") || "";
+        const responseText = await response.text();
+
+        let data: Record<string, unknown> | null = null;
+        if (contentType.includes("application/json") && responseText) {
+          try {
+            data = JSON.parse(responseText);
+          } catch {
+            // JSON parsing failed
+          }
+        }
+
+        if (!response.ok) {
+          const errorMessage =
+            (data && typeof data.error === "string" && data.error) ||
+            "Failed to extract text from PDF.";
+          setFileError(errorMessage);
+          return;
+        }
+
+        if (data && typeof data.text === "string" && data.text.length > 0) {
+          setResume(data.text);
+        } else {
+          setFileError("No text could be extracted from the PDF.");
+        }
+      } catch {
+        setFileError("Failed to upload PDF. Please check your connection and try again.");
+      } finally {
+        setIsParsing(false);
+      }
     },
     [resume]
   );
@@ -159,7 +199,7 @@ export default function TailorPage() {
   };
 
   const isReady =
-    resume.trim().length > 0 && jobDescription.trim().length > 0 && !isLoading;
+    resume.trim().length > 0 && jobDescription.trim().length > 0 && !isLoading && !isParsing;
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-12">
@@ -184,17 +224,17 @@ export default function TailorPage() {
             value={resume}
             onChange={(e) => setResume(e.target.value)}
             placeholder="Paste your full resume here..."
-            disabled={isLoading}
+            disabled={isLoading || isParsing}
             className="h-64 resize-y rounded-lg border border-border bg-white p-4 text-sm leading-relaxed placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none disabled:opacity-50"
           />
 
           {/* PDF upload zone */}
           <div
-            onDragOver={isLoading ? undefined : handleDragOver}
-            onDragLeave={isLoading ? undefined : handleDragLeave}
-            onDrop={isLoading ? undefined : handleDrop}
+            onDragOver={isLoading || isParsing ? undefined : handleDragOver}
+            onDragLeave={isLoading || isParsing ? undefined : handleDragLeave}
+            onDrop={isLoading || isParsing ? undefined : handleDrop}
             className={`flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-6 text-center transition-colors ${
-              isLoading
+              isLoading || isParsing
                 ? "border-border bg-surface opacity-50 cursor-not-allowed"
                 : isDragging
                   ? "border-accent bg-accent/5"
@@ -217,21 +257,49 @@ export default function TailorPage() {
               />
             </svg>
             <p className="text-sm text-muted">
-              Drag &amp; drop a PDF here, or{" "}
-              <label
-                className={`font-medium ${isLoading ? "pointer-events-none text-muted" : "cursor-pointer text-accent hover:text-accent-hover"}`}
-              >
-                browse
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".pdf"
-                  className="hidden"
-                  aria-label="Upload PDF resume"
-                  disabled={isLoading}
-                  onChange={handleFileSelect}
-                />
-              </label>
+              {isParsing ? (
+                <span className="flex items-center justify-center gap-2">
+                  <svg
+                    className="h-4 w-4 animate-spin"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    aria-hidden="true"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                    />
+                  </svg>
+                  Extracting text from PDF…
+                </span>
+              ) : (
+                <>
+                  Drag &amp; drop a PDF here, or{" "}
+                  <label
+                    className={`font-medium ${isLoading ? "pointer-events-none text-muted" : "cursor-pointer text-accent hover:text-accent-hover"}`}
+                  >
+                    browse
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".pdf"
+                      className="hidden"
+                      aria-label="Upload PDF resume"
+                      disabled={isLoading || isParsing}
+                      onChange={handleFileSelect}
+                    />
+                  </label>
+                </>
+              )}
             </p>
             {fileError && (
               <p role="alert" className="mt-2 text-sm text-red-600">

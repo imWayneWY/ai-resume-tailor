@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import pdfParse from "pdf-parse";
+import { PDFParse } from "pdf-parse";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
@@ -46,10 +46,10 @@ export async function POST(request: NextRequest) {
 
   try {
     const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    const data = new Uint8Array(arrayBuffer);
 
     // Validate PDF magic bytes ("%PDF-") to ensure the file is actually a PDF
-    const pdfMagic = buffer.subarray(0, 5).toString("ascii");
+    const pdfMagic = String.fromCharCode(...data.subarray(0, 5));
     if (pdfMagic !== "%PDF-") {
       return NextResponse.json(
         { error: "Only valid PDF files are accepted" },
@@ -57,7 +57,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const result = await pdfParse(buffer);
+    const parser = new PDFParse({ data });
+    const result = await parser.getText();
 
     const text = result.text.trim();
 

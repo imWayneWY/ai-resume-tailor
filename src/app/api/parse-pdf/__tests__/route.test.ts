@@ -5,12 +5,13 @@ import { POST } from "../route";
 
 // ---------- mock pdf-parse ----------
 
-jest.mock("pdf-parse", () => {
-  return jest.fn();
-});
+const mockGetText = jest.fn();
 
-import pdfParse from "pdf-parse";
-const mockPdfParse = pdfParse as jest.MockedFunction<typeof pdfParse>;
+jest.mock("pdf-parse", () => ({
+  PDFParse: jest.fn().mockImplementation(() => ({
+    getText: mockGetText,
+  })),
+}));
 
 // ---------- helpers ----------
 
@@ -43,12 +44,11 @@ function makePdfBlob(content = "fake pdf content", size?: number): Blob {
 
 describe("POST /api/parse-pdf", () => {
   beforeEach(() => {
-    mockPdfParse.mockReset();
+    mockGetText.mockReset();
   });
 
   it("returns 400 when no file is provided", async () => {
     const formData = new FormData();
-    // Submit empty form
     const emptyReq = new Request("http://localhost:3000/api/parse-pdf", {
       method: "POST",
       body: formData,
@@ -85,14 +85,9 @@ describe("POST /api/parse-pdf", () => {
   });
 
   it("returns extracted text on successful parse", async () => {
-    mockPdfParse.mockResolvedValueOnce({
+    mockGetText.mockResolvedValueOnce({
       text: "John Doe\nSoftware Engineer\n5 years experience",
-      numpages: 1,
-      numrender: 1,
-      info: {},
-      metadata: null,
-      version: "1.0",
-    } as Awaited<ReturnType<typeof pdfParse>>);
+    });
 
     const pdf = makePdfBlob();
     const res = await POST(makeFormDataRequest(pdf));
@@ -102,14 +97,9 @@ describe("POST /api/parse-pdf", () => {
   });
 
   it("returns 422 when extracted text is empty", async () => {
-    mockPdfParse.mockResolvedValueOnce({
+    mockGetText.mockResolvedValueOnce({
       text: "   ",
-      numpages: 1,
-      numrender: 1,
-      info: {},
-      metadata: null,
-      version: "1.0",
-    } as Awaited<ReturnType<typeof pdfParse>>);
+    });
 
     const pdf = makePdfBlob();
     const res = await POST(makeFormDataRequest(pdf));
@@ -120,7 +110,7 @@ describe("POST /api/parse-pdf", () => {
 
   it("returns 500 when pdf-parse throws (corrupted file)", async () => {
     const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => {});
-    mockPdfParse.mockRejectedValueOnce(new Error("Invalid PDF structure"));
+    mockGetText.mockRejectedValueOnce(new Error("Invalid PDF structure"));
 
     const pdf = makePdfBlob();
     const res = await POST(makeFormDataRequest(pdf));
@@ -147,14 +137,9 @@ describe("POST /api/parse-pdf", () => {
   });
 
   it("trims whitespace from extracted text", async () => {
-    mockPdfParse.mockResolvedValueOnce({
+    mockGetText.mockResolvedValueOnce({
       text: "  \n  Hello World  \n  ",
-      numpages: 1,
-      numrender: 1,
-      info: {},
-      metadata: null,
-      version: "1.0",
-    } as Awaited<ReturnType<typeof pdfParse>>);
+    });
 
     const pdf = makePdfBlob();
     const res = await POST(makeFormDataRequest(pdf));
@@ -165,14 +150,9 @@ describe("POST /api/parse-pdf", () => {
 
   it("handles multi-page PDF text correctly", async () => {
     const multiPageText = "Page 1 content\n\nPage 2 content\n\nPage 3 content";
-    mockPdfParse.mockResolvedValueOnce({
+    mockGetText.mockResolvedValueOnce({
       text: multiPageText,
-      numpages: 3,
-      numrender: 3,
-      info: {},
-      metadata: null,
-      version: "1.0",
-    } as Awaited<ReturnType<typeof pdfParse>>);
+    });
 
     const pdf = makePdfBlob();
     const res = await POST(makeFormDataRequest(pdf));

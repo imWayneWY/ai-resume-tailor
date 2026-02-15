@@ -492,6 +492,7 @@ describe("TailorPage", () => {
           resume: "My resume text",
           jobDescription: "Job description text",
           generateCoverLetter: false,
+          provider: "gemini",
         }),
       });
     });
@@ -526,6 +527,69 @@ describe("TailorPage", () => {
     await waitFor(() => {
       const fetchBody = JSON.parse(mockFetch.mock.calls[0][1].body);
       expect(fetchBody.apiKey).toBe("user-api-key-123");
+    });
+  });
+
+  it("sends Groq API key when provider is set to groq", async () => {
+    localStorageMock.setItem("model-provider", "groq");
+    localStorageMock.setItem("groq-api-key", "groq-key-456");
+    localStorageMock.getItem.mockClear();
+
+    const user = userEvent.setup();
+    mockFetch.mockResolvedValueOnce(
+      createMockResponse(
+        JSON.stringify({ sections: [{ title: "S", content: "C" }] }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      )
+    );
+
+    render(<TailorPage />);
+
+    await user.type(
+      screen.getByPlaceholderText(/paste your full resume/i),
+      "My resume"
+    );
+    await user.type(
+      screen.getByPlaceholderText(/paste the job description/i),
+      "Job desc"
+    );
+    await user.click(
+      screen.getByRole("button", { name: /tailor resume/i })
+    );
+
+    await waitFor(() => {
+      const fetchBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(fetchBody.provider).toBe("groq");
+      expect(fetchBody.apiKey).toBe("groq-key-456");
+    });
+  });
+
+  it("sends provider=gemini by default", async () => {
+    const user = userEvent.setup();
+    mockFetch.mockResolvedValueOnce(
+      createMockResponse(
+        JSON.stringify({ sections: [{ title: "S", content: "C" }] }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      )
+    );
+
+    render(<TailorPage />);
+
+    await user.type(
+      screen.getByPlaceholderText(/paste your full resume/i),
+      "My resume"
+    );
+    await user.type(
+      screen.getByPlaceholderText(/paste the job description/i),
+      "Job desc"
+    );
+    await user.click(
+      screen.getByRole("button", { name: /tailor resume/i })
+    );
+
+    await waitFor(() => {
+      const fetchBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(fetchBody.provider).toBe("gemini");
     });
   });
 

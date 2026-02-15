@@ -13,6 +13,7 @@
   "dependencies": {
     "@react-pdf/renderer": "^4.3.2",
     "next": "16.1.6",
+    "pdf-parse": "^2.4.5",
     "react": "19.2.3",
     "react-dom": "19.2.3"
   },
@@ -24,6 +25,7 @@
     "@testing-library/user-event": "^14.6.1",
     "@types/jest": "^30.0.0",
     "@types/node": "^20",
+    "@types/pdf-parse": "^1.1.5",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",

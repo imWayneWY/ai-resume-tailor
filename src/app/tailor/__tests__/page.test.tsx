@@ -412,7 +412,14 @@ describe("TailorPage", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(/too large/i);
   });
 
-  it("sets placeholder text for valid PDF upload", async () => {
+  it("extracts text from valid PDF and populates resume textarea", async () => {
+    mockFetch.mockResolvedValueOnce(
+      createMockResponse(
+        JSON.stringify({ text: "John Doe\nSoftware Engineer" }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      )
+    );
+
     render(<TailorPage />);
 
     const fileInput = screen.getByLabelText(/upload pdf resume/i);
@@ -422,9 +429,73 @@ describe("TailorPage", () => {
 
     fireEvent.change(fileInput, { target: { files: [file] } });
 
-    expect(
-      screen.getByPlaceholderText(/paste your full resume/i)
-    ).toHaveValue("[Uploaded: resume.pdf] — PDF parsing coming soon");
+    await waitFor(() => {
+      expect(
+        screen.getByPlaceholderText(/paste your full resume/i)
+      ).toHaveValue("John Doe\nSoftware Engineer");
+    });
+
+    // Verify fetch was called with FormData to /api/parse-pdf
+    expect(mockFetch).toHaveBeenCalledWith("/api/parse-pdf", expect.objectContaining({
+      method: "POST",
+    }));
+  });
+
+  it("shows error when PDF parsing API returns an error", async () => {
+    mockFetch.mockResolvedValueOnce(
+      createMockResponse(
+        JSON.stringify({ error: "Failed to parse PDF. The file may be corrupted or password-protected." }),
+        { status: 422, headers: { "content-type": "application/json" } }
+      )
+    );
+
+    render(<TailorPage />);
+
+    const fileInput = screen.getByLabelText(/upload pdf resume/i);
+    const file = new File(["bad pdf"], "bad.pdf", {
+      type: "application/pdf",
+    });
+
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent(/failed to parse pdf/i);
+    });
+  });
+
+  it("shows error when PDF parsing fetch throws (network error)", async () => {
+    mockFetch.mockRejectedValueOnce(new Error("Network failure"));
+
+    render(<TailorPage />);
+
+    const fileInput = screen.getByLabelText(/upload pdf resume/i);
+    const file = new File(["pdf content"], "resume.pdf", {
+      type: "application/pdf",
+    });
+
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent(/failed to upload pdf/i);
+    });
+  });
+
+  it("shows parsing state while extracting PDF text", async () => {
+    // Make fetch hang to observe loading state
+    mockFetch.mockReturnValueOnce(new Promise(() => {}));
+
+    render(<TailorPage />);
+
+    const fileInput = screen.getByLabelText(/upload pdf resume/i);
+    const file = new File(["pdf content"], "resume.pdf", {
+      type: "application/pdf",
+    });
+
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(screen.getByText(/extracting text from pdf/i)).toBeInTheDocument();
+    });
   });
 
   it("sends generateCoverLetter=true when checkbox is checked", async () => {

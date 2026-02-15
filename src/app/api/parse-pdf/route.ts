@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
     const pdf = await getDocumentProxy(data);
     const { text } = await extractText(pdf, { mergePages: true });
 
-    const trimmedText = (text as string).trim();
+    const trimmedText = text.trim();
 
     if (trimmedText.length === 0) {
       return NextResponse.json(

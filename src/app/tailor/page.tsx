@@ -224,7 +224,7 @@ export default function TailorPage() {
             value={resume}
             onChange={(e) => setResume(e.target.value)}
             placeholder="Paste your full resume here..."
-            disabled={isLoading}
+            disabled={isLoading || isParsing}
             className="h-64 resize-y rounded-lg border border-border bg-white p-4 text-sm leading-relaxed placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none disabled:opacity-50"
           />
 

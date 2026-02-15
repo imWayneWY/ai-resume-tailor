@@ -34,7 +34,8 @@ function makeInvalidRequest() {
 }
 
 function makePdfBlob(content = "fake pdf content", size?: number): Blob {
-  const data = size ? "a".repeat(size) : content;
+  const pdfHeader = "%PDF-1.4\n";
+  const data = size ? pdfHeader + "a".repeat(size - pdfHeader.length) : pdfHeader + content;
   return new Blob([data], { type: "application/pdf" });
 }
 
@@ -46,7 +47,6 @@ describe("POST /api/parse-pdf", () => {
   });
 
   it("returns 400 when no file is provided", async () => {
-    const req = makeFormDataRequest(null);
     const formData = new FormData();
     // Submit empty form
     const emptyReq = new Request("http://localhost:3000/api/parse-pdf", {
@@ -118,14 +118,25 @@ describe("POST /api/parse-pdf", () => {
     expect(json.error).toMatch(/could not extract/i);
   });
 
-  it("returns 422 when pdf-parse throws (corrupted file)", async () => {
+  it("returns 500 when pdf-parse throws (corrupted file)", async () => {
+    const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => {});
     mockPdfParse.mockRejectedValueOnce(new Error("Invalid PDF structure"));
 
     const pdf = makePdfBlob();
     const res = await POST(makeFormDataRequest(pdf));
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(500);
     const json = await res.json();
     expect(json.error).toMatch(/failed to parse pdf/i);
+    expect(consoleSpy).toHaveBeenCalledWith("Error parsing PDF:", expect.any(Error));
+    consoleSpy.mockRestore();
+  });
+
+  it("returns 400 for file without PDF magic bytes", async () => {
+    const fakePdf = new Blob(["This is not a PDF"], { type: "application/pdf" });
+    const res = await POST(makeFormDataRequest(fakePdf));
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toMatch(/only valid pdf/i);
   });
 
   it("returns 400 for invalid form data (JSON body instead of multipart)", async () => {

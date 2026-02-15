@@ -47,6 +47,16 @@ export async function POST(request: NextRequest) {
   try {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
+
+    // Validate PDF magic bytes ("%PDF-") to ensure the file is actually a PDF
+    const pdfMagic = buffer.subarray(0, 5).toString("ascii");
+    if (pdfMagic !== "%PDF-") {
+      return NextResponse.json(
+        { error: "Only valid PDF files are accepted" },
+        { status: 400 }
+      );
+    }
+
     const result = await pdfParse(buffer);
 
     const text = result.text.trim();
@@ -59,10 +69,11 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ text });
-  } catch {
+  } catch (error) {
+    console.error("Error parsing PDF:", error);
     return NextResponse.json(
-      { error: "Failed to parse PDF. The file may be corrupted or password-protected." },
-      { status: 422 }
+      { error: "Failed to parse PDF." },
+      { status: 500 }
     );
   }
 }

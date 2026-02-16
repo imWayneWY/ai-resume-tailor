@@ -737,4 +737,102 @@ describe("POST /api/tailor", () => {
     expect(fetchOptions.headers.Authorization).toBe("Bearer my-client-groq");
     expect(fetchOptions.headers.Authorization).not.toContain("test-groq-key");
   });
+
+  // --- AI phrase cleanup integration ---
+  it("cleans AI buzzwords from Gemini response sections", async () => {
+    const responseWithBuzzwords = {
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                text: JSON.stringify({
+                  sections: [
+                    {
+                      title: "Summary",
+                      content:
+                        "Spearheaded the development of cutting-edge applications by leveraging robust frameworks.",
+                    },
+                    {
+                      title: "Experience",
+                      content:
+                        "Utilized TypeScript in order to build holistic solutions.",
+                    },
+                  ],
+                }),
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify(responseWithBuzzwords), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    const res = await POST(makeRequest(validBody));
+    expect(res.status).toBe(200);
+
+    const json = await res.json();
+    // "Spearheaded" → "Led", "cutting-edge" → "modern",
+    // "leveraging" → "using", "robust" → "strong"
+    expect(json.sections[0].content).not.toMatch(/spearheaded/i);
+    expect(json.sections[0].content).not.toMatch(/cutting-edge/i);
+    expect(json.sections[0].content).not.toMatch(/leveraging/i);
+    expect(json.sections[0].content).not.toMatch(/robust/i);
+    expect(json.sections[0].content).toContain("Led");
+    expect(json.sections[0].content).toContain("modern");
+    expect(json.sections[0].content).toContain("strong");
+
+    // "Utilized" → "Used", "in order to" → "to", "holistic" → "comprehensive"
+    expect(json.sections[1].content).not.toMatch(/utilized/i);
+    expect(json.sections[1].content).not.toMatch(/in order to/i);
+    expect(json.sections[1].content).not.toMatch(/holistic/i);
+    expect(json.sections[1].content).toContain("Used");
+    expect(json.sections[1].content).toContain("comprehensive");
+  });
+
+  it("cleans AI buzzwords from cover letter", async () => {
+    const responseWithCoverLetter = {
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                text: JSON.stringify({
+                  sections: [
+                    { title: "Summary", content: "Software engineer" },
+                  ],
+                  coverLetter:
+                    "I am excited to facilitate the paradigm shift at your company.",
+                }),
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify(responseWithCoverLetter), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    const res = await POST(
+      makeRequest({ ...validBody, generateCoverLetter: true })
+    );
+    expect(res.status).toBe(200);
+
+    const json = await res.json();
+    expect(json.coverLetter).not.toMatch(/facilitate/i);
+    expect(json.coverLetter).not.toMatch(/paradigm shift/i);
+    expect(json.coverLetter).toContain("help");
+    expect(json.coverLetter).toContain("change");
+  });
 });

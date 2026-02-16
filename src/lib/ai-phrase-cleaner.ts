@@ -32,6 +32,7 @@ const AI_PHRASE_REPLACEMENTS: Record<string, string> = {
   effectuated: "completed",
   endeavored: "worked",
   facilitated: "helped",
+  facilitate: "help",
   facilitating: "helping",
   utilized: "used",
   utilizing: "using",
@@ -124,6 +125,8 @@ export function cleanAiPhrases(text: string): CleanupResult {
   // Handle em-dash with optional surrounding spaces
   cleaned = cleaned.replace(/\s*\u2014\s*/g, ", ");
   cleaned = cleaned.replace(/\s*---\s*/g, ", ");
+  // Double-dash requires spaces on both sides to avoid false positives
+  // (e.g., CLI flags like --verbose, version ranges, comment syntax)
   cleaned = cleaned.replace(/\s+--\s+/g, ", ");
 
   // Clean up double spaces that may result from replacements

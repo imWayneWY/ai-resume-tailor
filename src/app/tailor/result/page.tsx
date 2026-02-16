@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import MatchScore from "@/components/MatchScore";
 
 interface Section {
   title: string;
@@ -17,6 +18,8 @@ export default function ResultPage() {
   const router = useRouter();
   const [result, setResult] = useState<TailorResult | null>(null);
   const [editableSections, setEditableSections] = useState<Section[]>([]);
+  const [originalResume, setOriginalResume] = useState("");
+  const [jobDescription, setJobDescription] = useState("");
   const [coverLetterExpanded, setCoverLetterExpanded] = useState(false);
   const [pdfGenerating, setPdfGenerating] = useState(false);
   const [pdfError, setPdfError] = useState("");
@@ -46,6 +49,8 @@ export default function ResultPage() {
       }
       setResult(parsed);
       setEditableSections(parsed.sections.map((s) => ({ ...s })));
+      setOriginalResume(sessionStorage.getItem("tailorOriginalResume") || "");
+      setJobDescription(sessionStorage.getItem("tailorJobDescription") || "");
     } catch {
       router.replace("/tailor");
     }
@@ -110,6 +115,12 @@ export default function ResultPage() {
     }
   };
 
+  // Combine editable sections into a single text for match scoring
+  const tailoredText = useMemo(
+    () => editableSections.map((s) => s.content).join("\n"),
+    [editableSections]
+  );
+
   if (!result) {
     return (
       <main className="mx-auto max-w-5xl px-4 py-16 sm:px-6">
@@ -158,6 +169,17 @@ export default function ResultPage() {
           </div>
         )}
       </div>
+
+      {/* Match Score */}
+      {originalResume && jobDescription && (
+        <div className="mb-6 sm:mb-8">
+          <MatchScore
+            originalResume={originalResume}
+            tailoredResume={tailoredText}
+            jobDescription={jobDescription}
+          />
+        </div>
+      )}
 
       {/* Two-column layout: edit first on mobile, preview first on desktop */}
       <div className="grid grid-cols-1 gap-6 sm:gap-8 lg:grid-cols-2">

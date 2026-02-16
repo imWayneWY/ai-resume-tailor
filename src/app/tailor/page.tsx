@@ -188,6 +188,8 @@ export default function TailorPage() {
       }
 
       sessionStorage.setItem("tailorResult", JSON.stringify(data));
+      sessionStorage.setItem("tailorOriginalResume", resume);
+      sessionStorage.setItem("tailorJobDescription", jobDescription);
       router.push("/tailor/result");
     } catch {
       setApiError(

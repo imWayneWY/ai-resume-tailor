@@ -1,4 +1,40 @@
-import { extractKeywords, calculateMatchScore } from "@/lib/keyword-matcher";
+import {
+  extractKeywords,
+  calculateMatchScore,
+  stemWord,
+} from "@/lib/keyword-matcher";
+
+describe("stemWord", () => {
+  it("stems common suffixes", () => {
+    expect(stemWord("optimization")).toBe("optim");
+    expect(stemWord("optimized")).toBe("optim");
+    expect(stemWord("optimizing")).toBe("optim");
+    expect(stemWord("deployment")).toBe("deploy");
+    expect(stemWord("deployed")).toBe("deploy");
+    expect(stemWord("effectiveness")).toBe("effective");
+    expect(stemWord("monitoring")).toBe("monitor");
+  });
+
+  it("does not stem short words", () => {
+    expect(stemWord("go")).toBe("go");
+    expect(stemWord("api")).toBe("api");
+    expect(stemWord("aws")).toBe("aws");
+  });
+
+  it("does not stem tech keywords in allowlist", () => {
+    expect(stemWord("ai")).toBe("ai");
+    expect(stemWord("ml")).toBe("ml");
+  });
+
+  it("handles plurals", () => {
+    expect(stemWord("systems")).toBe("system");
+    expect(stemWord("pipelines")).toBe("pipeline");
+  });
+
+  it("does not remove 's' from words ending in 'ss'", () => {
+    expect(stemWord("access")).toBe("access");
+  });
+});
 
 describe("extractKeywords", () => {
   it("extracts significant words from text", () => {
@@ -18,15 +54,31 @@ describe("extractKeywords", () => {
     expect(keywords.has("react")).toBe(true);
   });
 
-  it("filters out short words not in allowlist", () => {
-    const keywords = extractKeywords("Go is a programming language by Google");
-    // "is" is a stop word, "a" is a stop word, "by" is a stop word
-    expect(keywords.has("is")).toBe(false);
-    expect(keywords.has("programming")).toBe(true);
-    expect(keywords.has("language")).toBe(true);
-    expect(keywords.has("google")).toBe(true);
-    // "go" is in the short keyword allowlist
-    expect(keywords.has("go")).toBe(true);
+  it("filters out resume-generic words", () => {
+    const keywords = extractKeywords(
+      "Developed and managed scalable React applications"
+    );
+    expect(keywords.has("developed")).toBe(false);
+    expect(keywords.has("managed")).toBe(false);
+    expect(keywords.has("react")).toBe(true);
+    expect(keywords.has("scalable")).toBe(true);
+  });
+
+  it("extracts multi-word phrases", () => {
+    const keywords = extractKeywords(
+      "Experience with machine learning and CI/CD pipelines"
+    );
+    expect(keywords.has("machine learning")).toBe(true);
+    expect(keywords.has("ci/cd")).toBe(true);
+  });
+
+  it("extracts known tech phrases", () => {
+    const keywords = extractKeywords(
+      "Built real-time distributed systems with server-side rendering"
+    );
+    expect(keywords.has("real-time")).toBe(true);
+    expect(keywords.has("distributed systems")).toBe(true);
+    expect(keywords.has("server-side rendering")).toBe(true);
   });
 
   it("filters out pure numbers", () => {
@@ -42,11 +94,21 @@ describe("extractKeywords", () => {
     expect(keywords.has("typescript")).toBe(true);
   });
 
-  it("handles tech keywords with dots and special chars", () => {
+  it("keeps short tech keywords via allowlist", () => {
+    const keywords = extractKeywords("Go R C AI ML CI CD");
+    expect(keywords.has("go")).toBe(true);
+    expect(keywords.has("r")).toBe(true);
+    expect(keywords.has("c")).toBe(true);
+    expect(keywords.has("ai")).toBe(true);
+    expect(keywords.has("ml")).toBe(true);
+    expect(keywords.has("ci")).toBe(true);
+    expect(keywords.has("cd")).toBe(true);
+  });
+
+  it("handles tech keywords with dots", () => {
     const keywords = extractKeywords("Experience with Node.js and GraphQL APIs");
     expect(keywords.has("node.js")).toBe(true);
     expect(keywords.has("graphql")).toBe(true);
-    expect(keywords.has("apis")).toBe(true);
   });
 
   it("returns empty set for empty input", () => {
@@ -57,17 +119,6 @@ describe("extractKeywords", () => {
   it("returns empty set for only stop words", () => {
     const keywords = extractKeywords("the and or but if with for");
     expect(keywords.size).toBe(0);
-  });
-
-  it("keeps short tech keywords via allowlist", () => {
-    const keywords = extractKeywords("Go R C AI ML CI CD");
-    expect(keywords.has("go")).toBe(true);
-    expect(keywords.has("r")).toBe(true);
-    expect(keywords.has("c")).toBe(true);
-    expect(keywords.has("ai")).toBe(true);
-    expect(keywords.has("ml")).toBe(true);
-    expect(keywords.has("ci")).toBe(true);
-    expect(keywords.has("cd")).toBe(true);
   });
 });
 
@@ -124,6 +175,46 @@ describe("calculateMatchScore", () => {
 
     expect(result.matchedKeywords).toEqual(["aws", "react"]);
     expect(result.missedKeywords).toEqual(["python", "typescript"]);
+  });
+
+  it("matches word variants via stemming", () => {
+    const jdKeywords = new Set(["optimization", "deployment", "monitoring"]);
+    const result = calculateMatchScore(
+      "Optimized performance and deployed services with real-time monitoring tools",
+      jdKeywords
+    );
+
+    // "optimized" stems to "optim", "optimization" stems to "optim" → match
+    // "deployed" stems to "deploy", "deployment" stems to "deploy" → match
+    // "monitoring" is exact match
+    expect(result.matchedKeywords).toContain("optimization");
+    expect(result.matchedKeywords).toContain("deployment");
+    expect(result.matchedKeywords).toContain("monitoring");
+    expect(result.matchPercentage).toBe(100);
+  });
+
+  it("matches multi-word phrases in resume text", () => {
+    const jdKeywords = new Set(["machine learning", "react"]);
+    const result = calculateMatchScore(
+      "Applied machine learning techniques using React",
+      jdKeywords
+    );
+
+    expect(result.matchedKeywords).toContain("machine learning");
+    expect(result.matchedKeywords).toContain("react");
+    expect(result.matchPercentage).toBe(100);
+  });
+
+  it("does not match phrases that are not present", () => {
+    const jdKeywords = new Set(["machine learning", "deep learning"]);
+    const result = calculateMatchScore(
+      "Built a machine learning pipeline",
+      jdKeywords
+    );
+
+    expect(result.matchedKeywords).toContain("machine learning");
+    expect(result.missedKeywords).toContain("deep learning");
+    expect(result.matchPercentage).toBe(50);
   });
 
   it("rounds match percentage to nearest integer", () => {

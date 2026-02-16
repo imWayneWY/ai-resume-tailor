@@ -81,6 +81,11 @@ describe("extractKeywords", () => {
     expect(keywords.has("server-side rendering")).toBe(true);
   });
 
+  it("does not extract phrases from substrings", () => {
+    const keywords = extractKeywords("She draws well and has good focus");
+    expect(keywords.has("aws")).toBe(false);
+  });
+
   it("filters out pure numbers", () => {
     const keywords = extractKeywords("5 years of React experience 2024");
     expect(keywords.has("5")).toBe(false);
@@ -215,6 +220,18 @@ describe("calculateMatchScore", () => {
     expect(result.matchedKeywords).toContain("machine learning");
     expect(result.missedKeywords).toContain("deep learning");
     expect(result.matchPercentage).toBe(50);
+  });
+
+  it("matches phrase variants with different separators", () => {
+    const jdKeywords = new Set(["ci/cd", "real-time"]);
+    const result = calculateMatchScore(
+      "Set up CI CD pipelines for real time monitoring",
+      jdKeywords
+    );
+
+    expect(result.matchedKeywords).toContain("ci/cd");
+    expect(result.matchedKeywords).toContain("real-time");
+    expect(result.matchPercentage).toBe(100);
   });
 
   it("rounds match percentage to nearest integer", () => {

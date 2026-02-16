@@ -46,7 +46,7 @@ const STOP_WORDS = new Set([
   "collaborate", "collaborated", "collaborating", "collaboration",
   "communicate", "communicated", "communication", "deliver", "delivered",
   "delivering", "high", "level", "leverage", "multiple", "various",
-  "key", "effectively", "efficient", "successfully", "ensure",
+  "key", "effectively", "efficient", "successfully",
   "contribute", "contributed", "contributing", "established", "utilize",
   "utilized", "utilizing", "facilitate", "facilitated", "facilitating",
 ]);
@@ -89,9 +89,9 @@ const KNOWN_PHRASES = [
   "static site generation", "single page application",
   "node.js", "next.js", "react.js", "vue.js", "angular.js",
   "ruby on rails", "asp.net", ".net core",
-  "amazon web services", "aws", "google cloud", "gcp", "microsoft azure",
-  "azure", "docker compose", "kubernetes",
-  "sql server", "no sql", "nosql",
+  "amazon web services", "google cloud", "microsoft azure",
+  "docker compose",
+  "sql server",
   "type safety", "type-safe",
 ];
 
@@ -120,7 +120,7 @@ export function stemWord(word: string): string {
     // -able/-ible
     "ible", "able",
     // -ing (general)
-    "ting", "ing",
+    "ing",
     // -ity, -ive, -ous, -ful, -ant, -ent, -al, -ial
     "ical", "ally", "ious",
     "ity", "ive", "ous", "ful", "ant", "ent",
@@ -151,15 +151,18 @@ export function stemWord(word: string): string {
 
 /**
  * Extract significant keywords from text.
- * Returns both the raw keywords and their stemmed forms for matching.
+ * Returns single words and recognized multi-word phrases, normalized to lowercase.
+ * Filters out stop words, short words (unless in allowlist), and pure numbers.
  */
 export function extractKeywords(text: string): Set<string> {
   const keywords = new Set<string>();
   const lowerText = text.toLowerCase();
 
-  // 1. Extract known multi-word phrases
+  // 1. Extract known multi-word phrases (word boundary matching to avoid substrings)
   for (const phrase of KNOWN_PHRASES) {
-    if (lowerText.includes(phrase)) {
+    const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = new RegExp(`(?:^|\\W)${escaped}(?:\\W|$)`, "i");
+    if (pattern.test(lowerText)) {
       keywords.add(phrase);
     }
   }
@@ -201,19 +204,26 @@ export function calculateMatchScore(
   const resumeLower = resumeText.toLowerCase();
   const resumeKeywords = extractKeywords(resumeText);
 
-  // Build a set of stemmed resume keywords for fuzzy matching
+  // Build a set of stemmed resume keywords for fuzzy matching (single words only)
   const resumeStems = new Set<string>();
   for (const kw of resumeKeywords) {
-    resumeStems.add(stemWord(kw));
+    if (!kw.includes(" ") && !kw.includes("/")) {
+      resumeStems.add(stemWord(kw));
+    }
   }
 
   const matchedKeywords: string[] = [];
   const missedKeywords: string[] = [];
 
   for (const keyword of jdKeywords) {
-    // For multi-word phrases, check if the phrase appears in the resume text directly
-    if (keyword.includes(" ") || keyword.includes("/")) {
-      if (resumeLower.includes(keyword)) {
+    // For multi-word phrases or compound terms, check with flexible separator matching
+    if (keyword.includes(" ") || keyword.includes("/") || keyword.includes("-")) {
+      // Normalize separators for flexible matching (ci/cd ↔ ci cd, real-time ↔ real time)
+      const flexPattern = keyword
+        .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+        .replace(/[\s/\\-]+/g, "[\\s/\\-]+");
+      const pattern = new RegExp(flexPattern, "i");
+      if (pattern.test(resumeLower)) {
         matchedKeywords.push(keyword);
       } else {
         missedKeywords.push(keyword);

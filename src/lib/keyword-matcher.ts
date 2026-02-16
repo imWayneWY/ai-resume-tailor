@@ -37,6 +37,16 @@ const STOP_WORDS = new Set([
 const MIN_WORD_LENGTH = 3;
 
 /**
+ * Short tech keywords that should be kept despite being under MIN_WORD_LENGTH.
+ * These are legitimate programming languages/tools that would be filtered out
+ * by the length check alone.
+ */
+const SHORT_KEYWORD_ALLOWLIST = new Set([
+  "go", "r", "c", "c#", "c++", "ai", "ml", "ci", "cd", "ui", "ux", "qa",
+  "db", "os", "vm", "ip", "io",
+]);
+
+/**
  * Extract significant keywords from text.
  * Filters out stop words, short words, and normalizes to lowercase.
  */
@@ -47,9 +57,9 @@ export function extractKeywords(text: string): Set<string> {
   for (const word of words) {
     const cleaned = word.replace(/^[.-]+|[.-]+$/g, "");
     if (
-      cleaned.length >= MIN_WORD_LENGTH &&
+      !/^\d+$/.test(cleaned) &&
       !STOP_WORDS.has(cleaned) &&
-      !/^\d+$/.test(cleaned)
+      (cleaned.length >= MIN_WORD_LENGTH || SHORT_KEYWORD_ALLOWLIST.has(cleaned))
     ) {
       keywords.add(cleaned);
     }
@@ -60,6 +70,10 @@ export function extractKeywords(text: string): Set<string> {
 
 /**
  * Calculate match statistics between resume text and JD keywords.
+ *
+ * @param resumeText - Raw resume text to match against
+ * @param jdKeywords - Keywords extracted via `extractKeywords()`. Must be pre-normalized
+ *   (lowercase, cleaned) — pass the output of `extractKeywords(jobDescription)` directly.
  */
 export function calculateMatchScore(
   resumeText: string,

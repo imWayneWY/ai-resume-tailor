@@ -52,12 +52,31 @@ describe("MatchScore", () => {
     expect(screen.getByText("JD Match Score")).toBeInTheDocument();
   });
 
-  it("shows improvement when after score is higher", () => {
-    render(<MatchScore {...defaultProps} />);
-    // The tailored resume has more matching keywords, so improvement should show
+  it("shows improvement indicator when after score is higher", () => {
+    const propsWithGuaranteedImprovement = {
+      originalResume: "React",
+      tailoredResume: "React TypeScript Node.js Python",
+      jobDescription: "React TypeScript Node.js Python",
+    };
+
+    render(<MatchScore {...propsWithGuaranteedImprovement} />);
+
+    // When the tailored resume matches more JD keywords than the original,
+    // the component should render a positive improvement like "+X%".
+    const improvement = screen.getByText(/^\+\d+%$/);
+    expect(improvement).toBeInTheDocument();
+  });
+
+  it("does not show improvement indicator when scores are equal", () => {
+    const propsWithNoImprovement = {
+      originalResume: "React TypeScript",
+      tailoredResume: "React TypeScript",
+      jobDescription: "React TypeScript",
+    };
+
+    render(<MatchScore {...propsWithNoImprovement} />);
+
     const improvement = screen.queryByText(/^\+\d+%$/);
-    // improvement may or may not appear depending on exact keyword matching
-    // just verify the component renders without error
-    expect(screen.getByText("JD Match Score")).toBeInTheDocument();
+    expect(improvement).not.toBeInTheDocument();
   });
 });

@@ -51,6 +51,10 @@ export default function ResultPage() {
       setEditableSections(parsed.sections.map((s) => ({ ...s })));
       setOriginalResume(sessionStorage.getItem("tailorOriginalResume") || "");
       setJobDescription(sessionStorage.getItem("tailorJobDescription") || "");
+
+      // Clean up sensitive data from sessionStorage after reading
+      sessionStorage.removeItem("tailorOriginalResume");
+      sessionStorage.removeItem("tailorJobDescription");
     } catch {
       router.replace("/tailor");
     }

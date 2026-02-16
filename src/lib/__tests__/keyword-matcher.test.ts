@@ -18,14 +18,15 @@ describe("extractKeywords", () => {
     expect(keywords.has("react")).toBe(true);
   });
 
-  it("filters out short words", () => {
+  it("filters out short words not in allowlist", () => {
     const keywords = extractKeywords("Go is a programming language by Google");
-    // "go" and "is" are < 3 chars or stop words
-    expect(keywords.has("go")).toBe(false);
+    // "is" is a stop word, "a" is a stop word, "by" is a stop word
     expect(keywords.has("is")).toBe(false);
     expect(keywords.has("programming")).toBe(true);
     expect(keywords.has("language")).toBe(true);
     expect(keywords.has("google")).toBe(true);
+    // "go" is in the short keyword allowlist
+    expect(keywords.has("go")).toBe(true);
   });
 
   it("filters out pure numbers", () => {
@@ -56,6 +57,17 @@ describe("extractKeywords", () => {
   it("returns empty set for only stop words", () => {
     const keywords = extractKeywords("the and or but if with for");
     expect(keywords.size).toBe(0);
+  });
+
+  it("keeps short tech keywords via allowlist", () => {
+    const keywords = extractKeywords("Go R C AI ML CI CD");
+    expect(keywords.has("go")).toBe(true);
+    expect(keywords.has("r")).toBe(true);
+    expect(keywords.has("c")).toBe(true);
+    expect(keywords.has("ai")).toBe(true);
+    expect(keywords.has("ml")).toBe(true);
+    expect(keywords.has("ci")).toBe(true);
+    expect(keywords.has("cd")).toBe(true);
   });
 });
 

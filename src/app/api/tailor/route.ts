@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { ModelProvider } from "@/lib/constants";
+import { cleanSections, cleanAiPhrases } from "@/lib/ai-phrase-cleaner";
 
 const GEMINI_API_URL =
   "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
@@ -262,6 +263,15 @@ function parseAndValidateResponse(text: string): NextResponse {
       { error: "AI returned invalid resume structure" },
       { status: 502 }
     );
+  }
+
+  // Post-process: remove AI-generated buzzwords and filler phrases
+  const cleanedResult = cleanSections(parsed.sections);
+  parsed.sections = cleanedResult.sections;
+
+  if (parsed.coverLetter) {
+    const cleanedCoverLetter = cleanAiPhrases(parsed.coverLetter);
+    parsed.coverLetter = cleanedCoverLetter.text;
   }
 
   return NextResponse.json(parsed);

@@ -1,7 +1,11 @@
 /**
  * Keyword extraction and matching utilities for JD-Resume comparison.
- * Extracts significant keywords from job descriptions and calculates
- * match percentages against resume text.
+ *
+ * Features:
+ * - Extracts both single keywords and multi-word phrases (bigrams)
+ * - Basic suffix stemming for better matching (developing ↔ development)
+ * - Short tech keyword allowlist (go, r, c, ai, ml, etc.)
+ * - Aggressive stop word filtering for resume/JD context
  */
 
 const STOP_WORDS = new Set([
@@ -23,7 +27,7 @@ const STOP_WORDS = new Set([
   "here", "there", "when", "where", "why", "how", "all", "each", "every",
   "few", "more", "most", "other", "some", "such", "no", "own", "same",
   "than", "too", "very", "just", "also", "now", "etc", "within",
-  // Job posting filler (not meaningful keywords)
+  // Job posting filler
   "role", "position", "job", "work", "working", "team", "company", "looking",
   "seeking", "required", "requirements", "responsibilities", "qualifications",
   "preferred", "experience", "years", "year", "ability", "skills", "knowledge",
@@ -32,14 +36,25 @@ const STOP_WORDS = new Set([
   "across", "along", "ensure", "take", "make", "join", "apply", "please",
   "candidate", "candidates", "opportunity", "read", "learn", "create",
   "world", "desire", "mission", "help", "culture", "values",
+  // Resume-generic words (appear in every resume regardless of fit)
+  "build", "built", "develop", "developed", "developing", "development",
+  "manage", "managed", "managing", "management", "support", "supported",
+  "supporting", "implement", "implemented", "implementing", "implementation",
+  "design", "designed", "designing", "provide", "provided", "providing",
+  "maintain", "maintained", "maintaining", "responsible", "lead", "leading",
+  "led", "improve", "improved", "improving", "improvement", "drive", "driven",
+  "collaborate", "collaborated", "collaborating", "collaboration",
+  "communicate", "communicated", "communication", "deliver", "delivered",
+  "delivering", "high", "level", "leverage", "multiple", "various",
+  "key", "effectively", "efficient", "successfully",
+  "contribute", "contributed", "contributing", "established", "utilize",
+  "utilized", "utilizing", "facilitate", "facilitated", "facilitating",
 ]);
 
 const MIN_WORD_LENGTH = 3;
 
 /**
  * Short tech keywords that should be kept despite being under MIN_WORD_LENGTH.
- * These are legitimate programming languages/tools that would be filtered out
- * by the length check alone.
  */
 const SHORT_KEYWORD_ALLOWLIST = new Set([
   "go", "r", "c", "c#", "c++", "ai", "ml", "ci", "cd", "ui", "ux", "qa",
@@ -47,13 +62,113 @@ const SHORT_KEYWORD_ALLOWLIST = new Set([
 ]);
 
 /**
+ * Known multi-word technical phrases to detect as single keywords.
+ * These are matched case-insensitively in the original text.
+ */
+const KNOWN_PHRASES = [
+  "machine learning", "deep learning", "natural language processing",
+  "computer vision", "data science", "data engineering", "data pipeline",
+  "ci/cd", "ci cd", "continuous integration", "continuous deployment",
+  "continuous delivery", "test driven", "test-driven",
+  "project management", "product management", "agile methodology",
+  "distributed systems", "microservices architecture", "event driven",
+  "event-driven", "real time", "real-time", "cross functional",
+  "cross-functional", "full stack", "full-stack", "front end", "front-end",
+  "back end", "back-end", "open source", "open-source",
+  "cloud computing", "cloud native", "cloud-native",
+  "web3", "smart contracts", "block chain", "blockchain",
+  "rest api", "restful api", "graphql api",
+  "user experience", "user interface",
+  "unit testing", "integration testing", "end to end",
+  "version control", "code review", "pull request",
+  "responsive design", "web accessibility", "accessibility",
+  "performance optimization", "search engine optimization", "seo",
+  "object oriented", "object-oriented", "functional programming",
+  "design patterns", "design system", "component library",
+  "state management", "server side rendering", "server-side rendering",
+  "static site generation", "single page application",
+  "node.js", "next.js", "react.js", "vue.js", "angular.js",
+  "ruby on rails", "asp.net", ".net core",
+  "amazon web services", "google cloud", "microsoft azure",
+  "docker compose",
+  "sql server",
+  "type safety", "type-safe",
+];
+
+/**
+ * Basic suffix stemming. Reduces common word forms to a shared root
+ * for better matching (e.g., "optimizing" and "optimization" both stem similarly).
+ *
+ * This is intentionally simple — not a full Porter stemmer — to avoid
+ * false positives while catching the most common resume/JD variations.
+ */
+export function stemWord(word: string): string {
+  // Don't stem short words or known tech terms
+  if (word.length <= 4 || SHORT_KEYWORD_ALLOWLIST.has(word)) return word;
+
+  // Order matters: try longer suffixes first
+  // Group by related forms so they reduce to the same stem
+  const suffixes = [
+    // -ization/-izing/-ized → strip to get common root
+    "ization", "isation",
+    "izing", "ising",
+    "ized", "ised",
+    // -ation (but not after 'iz' which is handled above)
+    "ation",
+    // -ment, -ness
+    "ment", "ness",
+    // -able/-ible
+    "ible", "able",
+    // -ing (general)
+    "ing",
+    // -ity, -ive, -ous, -ful, -ant, -ent, -al, -ial
+    "ical", "ally", "ious",
+    "ity", "ive", "ous", "ful", "ant", "ent",
+    "ion", "ism", "ist",
+    // -ed, -er, -ly
+    "ed", "er", "ly",
+  ];
+
+  for (const suffix of suffixes) {
+    if (word.endsWith(suffix) && word.length - suffix.length >= 3) {
+      return word.slice(0, word.length - suffix.length);
+    }
+  }
+
+  // Handle trailing 's' (plurals) but not 'ss', 'us', 'is'
+  if (
+    word.endsWith("s") &&
+    !word.endsWith("ss") &&
+    !word.endsWith("us") &&
+    !word.endsWith("is") &&
+    word.length > 4
+  ) {
+    return word.slice(0, -1);
+  }
+
+  return word;
+}
+
+/**
  * Extract significant keywords from text.
- * Filters out stop words, short words, and normalizes to lowercase.
+ * Returns single words and recognized multi-word phrases, normalized to lowercase.
+ * Filters out stop words, short words (unless in allowlist), and pure numbers.
  */
 export function extractKeywords(text: string): Set<string> {
   const keywords = new Set<string>();
-  const words = text.toLowerCase().split(/[^a-z0-9#+.-]+/);
+  const lowerText = text.toLowerCase();
 
+  // 1. Extract known multi-word phrases (word boundary matching to avoid substrings)
+  for (const phrase of KNOWN_PHRASES) {
+    const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = new RegExp(`(?:^|\\W)${escaped}(?:\\W|$)`, "i");
+    if (pattern.test(lowerText)) {
+      keywords.add(phrase);
+    }
+  }
+
+  // 2. Extract single words
+  const words = lowerText.split(/[^a-z0-9#+./-]+/);
   for (const word of words) {
     const cleaned = word.replace(/^[.-]+|[.-]+$/g, "");
     if (
@@ -70,6 +185,7 @@ export function extractKeywords(text: string): Set<string> {
 
 /**
  * Calculate match statistics between resume text and JD keywords.
+ * Uses stemming to match word variants (e.g., "optimizing" matches "optimization").
  *
  * @param resumeText - Raw resume text to match against
  * @param jdKeywords - Keywords extracted via `extractKeywords()`. Must be pre-normalized
@@ -85,15 +201,42 @@ export function calculateMatchScore(
   totalKeywords: number;
   matchPercentage: number;
 } {
+  const resumeLower = resumeText.toLowerCase();
   const resumeKeywords = extractKeywords(resumeText);
+
+  // Build a set of stemmed resume keywords for fuzzy matching (single words only)
+  const resumeStems = new Set<string>();
+  for (const kw of resumeKeywords) {
+    if (!kw.includes(" ") && !kw.includes("/")) {
+      resumeStems.add(stemWord(kw));
+    }
+  }
+
   const matchedKeywords: string[] = [];
   const missedKeywords: string[] = [];
 
   for (const keyword of jdKeywords) {
-    if (resumeKeywords.has(keyword)) {
-      matchedKeywords.push(keyword);
+    // For multi-word phrases or compound terms, check with flexible separator matching
+    if (keyword.includes(" ") || keyword.includes("/") || keyword.includes("-")) {
+      // Normalize separators for flexible matching (ci/cd ↔ ci cd, real-time ↔ real time)
+      const flexPattern = keyword
+        .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+        .replace(/[\s/\\-]+/g, "[\\s/\\-]+");
+      const pattern = new RegExp(flexPattern, "i");
+      if (pattern.test(resumeLower)) {
+        matchedKeywords.push(keyword);
+      } else {
+        missedKeywords.push(keyword);
+      }
     } else {
-      missedKeywords.push(keyword);
+      // For single words, try exact match first, then stemmed match
+      if (resumeKeywords.has(keyword)) {
+        matchedKeywords.push(keyword);
+      } else if (resumeStems.has(stemWord(keyword))) {
+        matchedKeywords.push(keyword);
+      } else {
+        missedKeywords.push(keyword);
+      }
     }
   }
 

@@ -95,15 +95,23 @@ export default function MatchScore({
 
   const improvement = afterScore.matchCount - beforeScore.matchCount;
 
-  // Log missed keywords to console for developer inspection (dev only)
+  // Log keywords to console for developer inspection (dev only)
   useEffect(() => {
-    if (process.env.NODE_ENV !== "production" && afterScore.missedKeywords.length > 0) {
-      console.log(
-        "[MatchScore] Unmatched keywords:",
-        afterScore.missedKeywords.join(", ")
-      );
+    if (process.env.NODE_ENV !== "production") {
+      if (afterScore.matchedKeywords.length > 0) {
+        console.log(
+          "[MatchScore] Matched keywords:",
+          afterScore.matchedKeywords.join(", ")
+        );
+      }
+      if (afterScore.missedKeywords.length > 0) {
+        console.log(
+          "[MatchScore] Unmatched keywords:",
+          afterScore.missedKeywords.join(", ")
+        );
+      }
     }
-  }, [afterScore.missedKeywords]);
+  }, [afterScore.matchedKeywords, afterScore.missedKeywords]);
 
   return (
     <div className="rounded-lg border border-border bg-white p-4 shadow-sm sm:p-6">
@@ -149,12 +157,6 @@ export default function MatchScore({
         />
       </div>
 
-      {/* Stats */}
-      <div className="mt-4 flex justify-center gap-6 text-xs text-muted">
-        <span>
-          {afterScore.matchCount} of {afterScore.totalKeywords} keywords matched
-        </span>
-      </div>
     </div>
   );
 }

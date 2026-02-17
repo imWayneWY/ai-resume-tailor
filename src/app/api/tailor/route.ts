@@ -38,10 +38,13 @@ Every section of the resume must be actively tailored — not just the summary. 
 - NEVER append JD keywords at the end of an existing bullet as a tacked-on phrase. This is the #1 mistake to avoid:
   ✗ BAD: "Led codebase migration from JS to TS, reducing errors, with a focus on collaborative development and knowledge sharing"
   ✗ BAD: "Built React components, leveraging cross-functional collaboration and driving engineering excellence"
-  The keywords feel forced and disconnected from the actual achievement.
+  ✗ BAD: "Implemented new features for the platform, contributing to scalable architecture and system reliability"
+  These all share the same anti-pattern: the original achievement is stated, then a comma or conjunction bolts on JD buzzwords that add no specific information.
   ✓ GOOD: "Led collaborative migration of codebase from JavaScript to TypeScript across 3 teams, reducing runtime errors by 40%"
   ✓ GOOD: "Partnered with design and product teams to build accessible React components, improving user engagement by 25%"
-  The keywords are woven into the narrative — they describe HOW the work was done, not bolted on after.
+  ✓ GOOD: "Architected scalable microservices handling 10K+ requests/sec, improving system reliability to 99.9% uptime"
+  In the good examples, keywords appear at the START or MIDDLE of the sentence as part of the core action — not tacked on at the end.
+- THE KEY TEST: Remove the last clause after the final comma. If the bullet still makes complete sense, you probably just appended keywords. Rewrite it so the keywords are structurally necessary.
 - Rewrite the entire sentence structure when needed to integrate keywords naturally. It should read like the candidate wrote it for this specific role.
 - Use the JD's exact terminology when the candidate has equivalent experience:
   • JD says "CI/CD pipelines" and candidate "set up automated deployments" → write "Built CI/CD pipelines for automated deployments"

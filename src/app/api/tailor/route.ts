@@ -1,12 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import type { ModelProvider } from "@/lib/constants";
 import { cleanSections, cleanAiPhrases } from "@/lib/ai-phrase-cleaner";
 
-const GEMINI_API_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
-
-const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
-const GROQ_MODEL = "llama-3.3-70b-versatile";
+const API_VERSION = "2025-01-01-preview";
 
 const SYSTEM_PROMPT = `You are an expert resume writer and ATS (Applicant Tracking System) optimizer. Your job is to deeply tailor a candidate's master resume to a specific job description.
 
@@ -92,8 +87,6 @@ interface TailorRequest {
   resume: string;
   jobDescription: string;
   generateCoverLetter: boolean;
-  apiKey?: string;
-  provider?: ModelProvider;
 }
 
 function validateRequest(
@@ -108,24 +101,6 @@ function validateRequest(
     b.jobDescription.trim().length > 0 &&
     typeof b.generateCoverLetter === "boolean"
   );
-}
-
-function validateApiKeyField(body: unknown): boolean {
-  if (!body || typeof body !== "object") return true;
-  const b = body as Record<string, unknown>;
-  if ("apiKey" in b && b.apiKey !== undefined && typeof b.apiKey !== "string") {
-    return false;
-  }
-  return true;
-}
-
-function validateProviderField(body: unknown): boolean {
-  if (!body || typeof body !== "object") return true;
-  const b = body as Record<string, unknown>;
-  if ("provider" in b && b.provider !== undefined) {
-    return b.provider === "gemini" || b.provider === "groq";
-  }
-  return true;
 }
 
 function buildUserPrompt(
@@ -150,73 +125,27 @@ ${generateCoverLetter ? "Please also generate a cover letter that addresses any 
 Respond with ONLY the JSON object, no markdown fences or extra text.`;
 }
 
-async function callGemini(
-  apiKey: string,
-  userPrompt: string
-): Promise<NextResponse> {
-  const encodedKey = encodeURIComponent(apiKey);
-
-  const response = await fetch(`${GEMINI_API_URL}?key=${encodedKey}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      system_instruction: {
-        parts: [{ text: SYSTEM_PROMPT }],
-      },
-      contents: [
-        {
-          role: "user",
-          parts: [{ text: userPrompt }],
-        },
-      ],
-      generationConfig: {
-        temperature: 0.7,
-        topP: 0.9,
-        responseMimeType: "application/json",
-      },
-    }),
-  });
-
-  if (response.status === 429) {
-    return NextResponse.json(
-      { error: "Rate limited — please wait a moment and try again" },
-      { status: 429 }
-    );
-  }
-
-  if (!response.ok) {
-    await response.text();
-    return NextResponse.json(
-      { error: `Gemini API error (${response.status})` },
-      { status: 502 }
-    );
-  }
-
-  const data = await response.json();
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-
-  if (!text) {
-    return NextResponse.json(
-      { error: "Unexpected response from Gemini" },
-      { status: 502 }
-    );
-  }
-
-  return parseAndValidateResponse(text);
+function buildAzureUrl(endpoint: string, deployment: string): string {
+  // Remove trailing slash from endpoint if present
+  const base = endpoint.replace(/\/+$/, "");
+  return `${base}/openai/deployments/${encodeURIComponent(deployment)}/chat/completions?api-version=${API_VERSION}`;
 }
 
-async function callGroq(
+async function callAzureOpenAI(
+  endpoint: string,
   apiKey: string,
+  deployment: string,
   userPrompt: string
 ): Promise<NextResponse> {
-  const response = await fetch(GROQ_API_URL, {
+  const url = buildAzureUrl(endpoint, deployment);
+
+  const response = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
+      "api-key": apiKey,
     },
     body: JSON.stringify({
-      model: GROQ_MODEL,
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: userPrompt },
@@ -237,7 +166,7 @@ async function callGroq(
   if (!response.ok) {
     await response.text();
     return NextResponse.json(
-      { error: `Groq API error (${response.status})` },
+      { error: `Azure OpenAI API error (${response.status})` },
       { status: 502 }
     );
   }
@@ -247,7 +176,7 @@ async function callGroq(
 
   if (!text) {
     return NextResponse.json(
-      { error: "Unexpected response from Groq" },
+      { error: "Unexpected response from Azure OpenAI" },
       { status: 502 }
     );
   }
@@ -322,32 +251,14 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (!validateApiKeyField(body)) {
+  const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
+  const apiKey = process.env.AZURE_OPENAI_API_KEY;
+  const deployment = process.env.AZURE_OPENAI_DEPLOYMENT;
+
+  if (!endpoint || !apiKey || !deployment) {
     return NextResponse.json(
-      { error: "Invalid apiKey: must be a string" },
-      { status: 400 }
-    );
-  }
-
-  if (!validateProviderField(body)) {
-    return NextResponse.json(
-      { error: "Invalid provider: must be 'gemini' or 'groq'" },
-      { status: 400 }
-    );
-  }
-
-  const provider: ModelProvider = body.provider || "gemini";
-
-  // Use client-provided API key, fall back to env variable
-  const clientKey = body.apiKey?.trim();
-  const envKey = provider === "groq" ? process.env.GROQ_API_KEY : process.env.GEMINI_API_KEY;
-  const rawApiKey = clientKey || envKey;
-
-  if (!rawApiKey) {
-    const providerName = provider === "groq" ? "Groq" : "Gemini";
-    return NextResponse.json(
-      { error: `No API key provided. Please add your ${providerName} API key in Settings, or configure a server default.` },
-      { status: 401 }
+      { error: "Azure OpenAI is not configured. Please contact the administrator." },
+      { status: 503 }
     );
   }
 
@@ -363,10 +274,7 @@ export async function POST(request: NextRequest) {
   const userPrompt = buildUserPrompt(resume, jobDescription, generateCoverLetter);
 
   try {
-    if (provider === "groq") {
-      return await callGroq(rawApiKey, userPrompt);
-    }
-    return await callGemini(rawApiKey, userPrompt);
+    return await callAzureOpenAI(endpoint, apiKey, deployment, userPrompt);
   } catch {
     return NextResponse.json(
       { error: "Internal server error" },

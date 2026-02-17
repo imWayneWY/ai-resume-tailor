@@ -27,33 +27,14 @@ const validBody = {
   generateCoverLetter: false,
 };
 
-const validGeminiResponse = {
-  candidates: [
-    {
-      content: {
-        parts: [
-          {
-            text: JSON.stringify({
-              sections: [
-                { title: "Summary", content: "Seasoned software engineer..." },
-                { title: "Skills", content: "TypeScript, React, Node.js" },
-              ],
-            }),
-          },
-        ],
-      },
-    },
-  ],
-};
-
-const validGroqResponse = {
+const validAzureResponse = {
   choices: [
     {
       message: {
         content: JSON.stringify({
           sections: [
-            { title: "Summary", content: "Experienced engineer..." },
-            { title: "Skills", content: "Python, Go, Rust" },
+            { title: "Summary", content: "Seasoned software engineer..." },
+            { title: "Skills", content: "TypeScript, React, Node.js" },
           ],
         }),
       },
@@ -69,128 +50,44 @@ let mockFetch: jest.Mock;
 beforeEach(() => {
   mockFetch = jest.fn();
   global.fetch = mockFetch;
-  process.env.GEMINI_API_KEY = "test-api-key";
-  process.env.GROQ_API_KEY = "test-groq-key";
+  process.env.AZURE_OPENAI_ENDPOINT = "https://test-resource.openai.azure.com";
+  process.env.AZURE_OPENAI_API_KEY = "test-azure-key";
+  process.env.AZURE_OPENAI_DEPLOYMENT = "gpt-4.1-mini";
 });
 
 afterEach(() => {
   global.fetch = originalFetch;
-  delete process.env.GEMINI_API_KEY;
-  delete process.env.GROQ_API_KEY;
+  delete process.env.AZURE_OPENAI_ENDPOINT;
+  delete process.env.AZURE_OPENAI_API_KEY;
+  delete process.env.AZURE_OPENAI_DEPLOYMENT;
 });
 
 // ---------- tests ----------
 
 describe("POST /api/tailor", () => {
-  // --- Config / env ---
-  it("returns 401 when no API key is available (no client key, no env key)", async () => {
-    delete process.env.GEMINI_API_KEY;
+  // --- Azure OpenAI config ---
+  it("returns 503 when AZURE_OPENAI_ENDPOINT is not configured", async () => {
+    delete process.env.AZURE_OPENAI_ENDPOINT;
     const res = await POST(makeRequest(validBody));
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(503);
     const json = await res.json();
-    expect(json.error).toMatch(/no api key provided/i);
+    expect(json.error).toMatch(/not configured/i);
   });
 
-  it("uses client-provided apiKey when present", async () => {
-    delete process.env.GEMINI_API_KEY;
-    mockFetch.mockResolvedValueOnce(
-      new Response(JSON.stringify(validGeminiResponse), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      })
-    );
-
-    const res = await POST(
-      makeRequest({ ...validBody, apiKey: "client-key-123" })
-    );
-    expect(res.status).toBe(200);
-
-    const url = mockFetch.mock.calls[0][0];
-    expect(url).toContain("key=client-key-123");
-  });
-
-  it("falls back to env key when client apiKey is not provided", async () => {
-    mockFetch.mockResolvedValueOnce(
-      new Response(JSON.stringify(validGeminiResponse), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      })
-    );
-
+  it("returns 503 when AZURE_OPENAI_API_KEY is not configured", async () => {
+    delete process.env.AZURE_OPENAI_API_KEY;
     const res = await POST(makeRequest(validBody));
-    expect(res.status).toBe(200);
-
-    const url = mockFetch.mock.calls[0][0];
-    expect(url).toContain("key=test-api-key");
-  });
-
-  it("prefers client apiKey over env key", async () => {
-    mockFetch.mockResolvedValueOnce(
-      new Response(JSON.stringify(validGeminiResponse), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      })
-    );
-
-    const res = await POST(
-      makeRequest({ ...validBody, apiKey: "client-preferred" })
-    );
-    expect(res.status).toBe(200);
-
-    const url = mockFetch.mock.calls[0][0];
-    expect(url).toContain("key=client-preferred");
-    expect(url).not.toContain("key=test-api-key");
-  });
-
-  it("falls back to env key when client apiKey is empty string", async () => {
-    mockFetch.mockResolvedValueOnce(
-      new Response(JSON.stringify(validGeminiResponse), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      })
-    );
-
-    const res = await POST(
-      makeRequest({ ...validBody, apiKey: "   " })
-    );
-    expect(res.status).toBe(200);
-
-    const url = mockFetch.mock.calls[0][0];
-    expect(url).toContain("key=test-api-key");
-  });
-
-  it("returns 400 when apiKey is not a string", async () => {
-    const res = await POST(
-      makeRequest({ ...validBody, apiKey: 12345 })
-    );
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(503);
     const json = await res.json();
-    expect(json.error).toMatch(/invalid apiKey/i);
+    expect(json.error).toMatch(/not configured/i);
   });
 
-  // --- Provider validation ---
-  it("returns 400 when provider is invalid", async () => {
-    const res = await POST(
-      makeRequest({ ...validBody, provider: "openai" })
-    );
-    expect(res.status).toBe(400);
-    const json = await res.json();
-    expect(json.error).toMatch(/invalid provider/i);
-  });
-
-  it("defaults to gemini when provider is not specified", async () => {
-    mockFetch.mockResolvedValueOnce(
-      new Response(JSON.stringify(validGeminiResponse), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      })
-    );
-
+  it("returns 503 when AZURE_OPENAI_DEPLOYMENT is not configured", async () => {
+    delete process.env.AZURE_OPENAI_DEPLOYMENT;
     const res = await POST(makeRequest(validBody));
-    expect(res.status).toBe(200);
-
-    const url = mockFetch.mock.calls[0][0];
-    expect(url).toContain("generativelanguage.googleapis.com");
+    expect(res.status).toBe(503);
+    const json = await res.json();
+    expect(json.error).toMatch(/not configured/i);
   });
 
   // --- Input validation ---
@@ -256,7 +153,7 @@ describe("POST /api/tailor", () => {
     expect(res.status).toBe(400);
   });
 
-  it("returns 400 when input exceeds MAX_INPUT_LENGTH", async () => {
+  it("returns 400 when resume exceeds MAX_INPUT_LENGTH", async () => {
     const longString = "x".repeat(50_001);
     const res = await POST(
       makeRequest({ resume: longString, jobDescription: "desc", generateCoverLetter: false })
@@ -276,10 +173,76 @@ describe("POST /api/tailor", () => {
     expect(json.error).toMatch(/too large/i);
   });
 
-  // --- Gemini API integration ---
-  it("returns tailored resume on successful Gemini response", async () => {
+  // --- Azure OpenAI API integration ---
+  it("builds correct Azure OpenAI URL", async () => {
     mockFetch.mockResolvedValueOnce(
-      new Response(JSON.stringify(validGeminiResponse), {
+      new Response(JSON.stringify(validAzureResponse), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    await POST(makeRequest(validBody));
+
+    const url = mockFetch.mock.calls[0][0];
+    expect(url).toBe(
+      "https://test-resource.openai.azure.com/openai/deployments/gpt-4.1-mini/chat/completions?api-version=2025-01-01-preview"
+    );
+  });
+
+  it("strips trailing slash from endpoint", async () => {
+    process.env.AZURE_OPENAI_ENDPOINT = "https://test-resource.openai.azure.com/";
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify(validAzureResponse), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    await POST(makeRequest(validBody));
+
+    const url = mockFetch.mock.calls[0][0];
+    expect(url).toContain("azure.com/openai/deployments");
+    expect(url).not.toContain("azure.com//openai");
+  });
+
+  it("sends api-key header (not Bearer token)", async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify(validAzureResponse), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    await POST(makeRequest(validBody));
+
+    const fetchOptions = mockFetch.mock.calls[0][1];
+    expect(fetchOptions.headers["api-key"]).toBe("test-azure-key");
+    expect(fetchOptions.headers.Authorization).toBeUndefined();
+  });
+
+  it("sends correct request body format", async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify(validAzureResponse), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    await POST(makeRequest(validBody));
+
+    const fetchBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(fetchBody.messages).toHaveLength(2);
+    expect(fetchBody.messages[0].role).toBe("system");
+    expect(fetchBody.messages[1].role).toBe("user");
+    expect(fetchBody.temperature).toBe(0.7);
+    expect(fetchBody.top_p).toBe(0.9);
+    expect(fetchBody.response_format).toEqual({ type: "json_object" });
+  });
+
+  it("returns tailored resume on successful response", async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify(validAzureResponse), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       })
@@ -297,17 +260,13 @@ describe("POST /api/tailor", () => {
     mockFetch.mockResolvedValueOnce(
       new Response(
         JSON.stringify({
-          candidates: [
+          choices: [
             {
-              content: {
-                parts: [
-                  {
-                    text: JSON.stringify({
-                      sections: [{ title: "Summary", content: "..." }],
-                      coverLetter: "Dear Hiring Manager...",
-                    }),
-                  },
-                ],
+              message: {
+                content: JSON.stringify({
+                  sections: [{ title: "Summary", content: "..." }],
+                  coverLetter: "Dear Hiring Manager...",
+                }),
               },
             },
           ],
@@ -322,14 +281,27 @@ describe("POST /api/tailor", () => {
     const json = await res.json();
     expect(json.coverLetter).toBeDefined();
 
-    // Verify the prompt sent to Gemini includes cover letter instruction
-    const fetchCall = mockFetch.mock.calls[0];
-    const fetchBody = JSON.parse(fetchCall[1].body);
-    const userText = fetchBody.contents[0].parts[0].text;
+    const fetchBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+    const userText = fetchBody.messages[1].content;
     expect(userText).toMatch(/cover letter/i);
   });
 
-  it("returns 429 when Gemini rate limits", async () => {
+  it("does not include coverLetter instruction when generateCoverLetter is false", async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify(validAzureResponse), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    await POST(makeRequest({ ...validBody, generateCoverLetter: false }));
+
+    const fetchBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+    const userText = fetchBody.messages[1].content;
+    expect(userText).toMatch(/do not include a coverLetter/i);
+  });
+
+  it("returns 429 when rate limited", async () => {
     mockFetch.mockResolvedValueOnce(
       new Response("Rate limited", { status: 429 })
     );
@@ -339,19 +311,19 @@ describe("POST /api/tailor", () => {
     expect(json.error).toMatch(/rate limited/i);
   });
 
-  it("returns 502 on non-ok Gemini response", async () => {
+  it("returns 502 on non-ok response", async () => {
     mockFetch.mockResolvedValueOnce(
       new Response("Internal Server Error", { status: 500 })
     );
     const res = await POST(makeRequest(validBody));
     expect(res.status).toBe(502);
     const json = await res.json();
-    expect(json.error).toMatch(/Gemini API error/i);
+    expect(json.error).toMatch(/Azure OpenAI API error/i);
   });
 
-  it("returns 502 when Gemini response has no text", async () => {
+  it("returns 502 when response has no content", async () => {
     mockFetch.mockResolvedValueOnce(
-      new Response(JSON.stringify({ candidates: [] }), {
+      new Response(JSON.stringify({ choices: [] }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       })
@@ -362,12 +334,12 @@ describe("POST /api/tailor", () => {
     expect(json.error).toMatch(/unexpected response/i);
   });
 
-  it("returns 502 when Gemini returns invalid JSON text", async () => {
+  it("returns 502 when response is invalid JSON text", async () => {
     mockFetch.mockResolvedValueOnce(
       new Response(
         JSON.stringify({
-          candidates: [
-            { content: { parts: [{ text: "NOT VALID JSON" }] } },
+          choices: [
+            { message: { content: "NOT VALID JSON" } },
           ],
         }),
         { status: 200, headers: { "Content-Type": "application/json" } }
@@ -379,14 +351,14 @@ describe("POST /api/tailor", () => {
     expect(json.error).toMatch(/failed to parse/i);
   });
 
-  it("returns 502 when Gemini returns empty sections array", async () => {
+  it("returns 502 when sections array is empty", async () => {
     mockFetch.mockResolvedValueOnce(
       new Response(
         JSON.stringify({
-          candidates: [
+          choices: [
             {
-              content: {
-                parts: [{ text: JSON.stringify({ sections: [] }) }],
+              message: {
+                content: JSON.stringify({ sections: [] }),
               },
             },
           ],
@@ -404,16 +376,12 @@ describe("POST /api/tailor", () => {
     mockFetch.mockResolvedValueOnce(
       new Response(
         JSON.stringify({
-          candidates: [
+          choices: [
             {
-              content: {
-                parts: [
-                  {
-                    text: JSON.stringify({
-                      sections: [{ title: 123, content: null }],
-                    }),
-                  },
-                ],
+              message: {
+                content: JSON.stringify({
+                  sections: [{ title: 123, content: null }],
+                }),
               },
             },
           ],
@@ -431,17 +399,13 @@ describe("POST /api/tailor", () => {
     mockFetch.mockResolvedValueOnce(
       new Response(
         JSON.stringify({
-          candidates: [
+          choices: [
             {
-              content: {
-                parts: [
-                  {
-                    text: JSON.stringify({
-                      sections: [{ title: "Summary", content: "..." }],
-                      coverLetter: 12345,
-                    }),
-                  },
-                ],
+              message: {
+                content: JSON.stringify({
+                  sections: [{ title: "Summary", content: "..." }],
+                  coverLetter: 12345,
+                }),
               },
             },
           ],
@@ -463,305 +427,26 @@ describe("POST /api/tailor", () => {
     expect(json.error).toMatch(/internal server error/i);
   });
 
-  it("passes the API key as a query parameter to Gemini", async () => {
-    mockFetch.mockResolvedValueOnce(
-      new Response(JSON.stringify(validGeminiResponse), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      })
-    );
-
-    await POST(makeRequest(validBody));
-
-    const url = mockFetch.mock.calls[0][0];
-    expect(url).toContain("key=test-api-key");
-  });
-
-  it("URL-encodes the API key in the Gemini request URL", async () => {
-    mockFetch.mockResolvedValueOnce(
-      new Response(JSON.stringify(validGeminiResponse), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      })
-    );
-
-    await POST(makeRequest({ ...validBody, apiKey: "key&with=special?chars" }));
-
-    const url = mockFetch.mock.calls[0][0];
-    expect(url).toContain("key=key%26with%3Dspecial%3Fchars");
-  });
-
-  it("sends correct generation config to Gemini", async () => {
-    mockFetch.mockResolvedValueOnce(
-      new Response(JSON.stringify(validGeminiResponse), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      })
-    );
-
-    await POST(makeRequest(validBody));
-
-    const fetchBody = JSON.parse(mockFetch.mock.calls[0][1].body);
-    expect(fetchBody.generationConfig.temperature).toBe(0.7);
-    expect(fetchBody.generationConfig.topP).toBe(0.9);
-    expect(fetchBody.generationConfig.responseMimeType).toBe(
-      "application/json"
-    );
-  });
-
-  it("does not include coverLetter instruction when generateCoverLetter is false", async () => {
-    mockFetch.mockResolvedValueOnce(
-      new Response(JSON.stringify(validGeminiResponse), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      })
-    );
-
-    await POST(makeRequest({ ...validBody, generateCoverLetter: false }));
-
-    const fetchBody = JSON.parse(mockFetch.mock.calls[0][1].body);
-    const userText = fetchBody.contents[0].parts[0].text;
-    expect(userText).toMatch(/do not include a coverLetter/i);
-  });
-
-  // --- Groq API integration ---
-  it("routes to Groq when provider is 'groq'", async () => {
-    mockFetch.mockResolvedValueOnce(
-      new Response(JSON.stringify(validGroqResponse), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      })
-    );
-
-    const res = await POST(makeRequest({ ...validBody, provider: "groq" }));
-    expect(res.status).toBe(200);
-
-    const url = mockFetch.mock.calls[0][0];
-    expect(url).toContain("api.groq.com");
-  });
-
-  it("returns tailored resume on successful Groq response", async () => {
-    mockFetch.mockResolvedValueOnce(
-      new Response(JSON.stringify(validGroqResponse), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      })
-    );
-
-    const res = await POST(makeRequest({ ...validBody, provider: "groq" }));
-    expect(res.status).toBe(200);
-    const json = await res.json();
-    expect(json.sections).toHaveLength(2);
-    expect(json.sections[0].title).toBe("Summary");
-    expect(json.sections[1].title).toBe("Skills");
-  });
-
-  it("sends Bearer token to Groq API (not query param)", async () => {
-    mockFetch.mockResolvedValueOnce(
-      new Response(JSON.stringify(validGroqResponse), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      })
-    );
-
-    await POST(makeRequest({ ...validBody, provider: "groq" }));
-
-    const fetchOptions = mockFetch.mock.calls[0][1];
-    expect(fetchOptions.headers.Authorization).toBe("Bearer test-groq-key");
-  });
-
-  it("uses client-provided apiKey for Groq when present", async () => {
-    delete process.env.GROQ_API_KEY;
-    mockFetch.mockResolvedValueOnce(
-      new Response(JSON.stringify(validGroqResponse), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      })
-    );
-
-    const res = await POST(
-      makeRequest({ ...validBody, provider: "groq", apiKey: "client-groq-key" })
-    );
-    expect(res.status).toBe(200);
-
-    const fetchOptions = mockFetch.mock.calls[0][1];
-    expect(fetchOptions.headers.Authorization).toBe("Bearer client-groq-key");
-  });
-
-  it("falls back to GROQ_API_KEY env var for Groq provider", async () => {
-    mockFetch.mockResolvedValueOnce(
-      new Response(JSON.stringify(validGroqResponse), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      })
-    );
-
-    const res = await POST(makeRequest({ ...validBody, provider: "groq" }));
-    expect(res.status).toBe(200);
-
-    const fetchOptions = mockFetch.mock.calls[0][1];
-    expect(fetchOptions.headers.Authorization).toBe("Bearer test-groq-key");
-  });
-
-  it("returns 401 when no Groq API key is available", async () => {
-    delete process.env.GROQ_API_KEY;
-    const res = await POST(makeRequest({ ...validBody, provider: "groq" }));
-    expect(res.status).toBe(401);
-    const json = await res.json();
-    expect(json.error).toMatch(/groq api key/i);
-  });
-
-  it("sends correct request body to Groq (OpenAI-compatible format)", async () => {
-    mockFetch.mockResolvedValueOnce(
-      new Response(JSON.stringify(validGroqResponse), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      })
-    );
-
-    await POST(makeRequest({ ...validBody, provider: "groq" }));
-
-    const fetchBody = JSON.parse(mockFetch.mock.calls[0][1].body);
-    expect(fetchBody.model).toBe("llama-3.3-70b-versatile");
-    expect(fetchBody.messages).toHaveLength(2);
-    expect(fetchBody.messages[0].role).toBe("system");
-    expect(fetchBody.messages[1].role).toBe("user");
-    expect(fetchBody.temperature).toBe(0.7);
-    expect(fetchBody.top_p).toBe(0.9);
-    expect(fetchBody.response_format).toEqual({ type: "json_object" });
-  });
-
-  it("returns 429 when Groq rate limits", async () => {
-    mockFetch.mockResolvedValueOnce(
-      new Response("Rate limited", { status: 429 })
-    );
-    const res = await POST(makeRequest({ ...validBody, provider: "groq" }));
-    expect(res.status).toBe(429);
-    const json = await res.json();
-    expect(json.error).toMatch(/rate limited/i);
-  });
-
-  it("returns 502 on non-ok Groq response", async () => {
-    mockFetch.mockResolvedValueOnce(
-      new Response("Internal Server Error", { status: 500 })
-    );
-    const res = await POST(makeRequest({ ...validBody, provider: "groq" }));
-    expect(res.status).toBe(502);
-    const json = await res.json();
-    expect(json.error).toMatch(/Groq API error/i);
-  });
-
-  it("returns 502 when Groq response has no content", async () => {
-    mockFetch.mockResolvedValueOnce(
-      new Response(JSON.stringify({ choices: [] }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      })
-    );
-    const res = await POST(makeRequest({ ...validBody, provider: "groq" }));
-    expect(res.status).toBe(502);
-    const json = await res.json();
-    expect(json.error).toMatch(/unexpected response/i);
-  });
-
-  it("returns 502 when Groq returns invalid JSON text", async () => {
-    mockFetch.mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
-          choices: [
-            { message: { content: "NOT VALID JSON" } },
-          ],
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
-    );
-    const res = await POST(makeRequest({ ...validBody, provider: "groq" }));
-    expect(res.status).toBe(502);
-    const json = await res.json();
-    expect(json.error).toMatch(/failed to parse/i);
-  });
-
-  it("returns 500 when Groq fetch throws (network error)", async () => {
-    mockFetch.mockRejectedValueOnce(new Error("Network failure"));
-    const res = await POST(makeRequest({ ...validBody, provider: "groq" }));
-    expect(res.status).toBe(500);
-    const json = await res.json();
-    expect(json.error).toMatch(/internal server error/i);
-  });
-
-  it("sends cover letter instruction to Groq when generateCoverLetter is true", async () => {
-    mockFetch.mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
-          choices: [
-            {
-              message: {
-                content: JSON.stringify({
-                  sections: [{ title: "Summary", content: "..." }],
-                  coverLetter: "Dear Hiring Manager...",
-                }),
-              },
-            },
-          ],
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
-    );
-
-    const res = await POST(
-      makeRequest({ ...validBody, provider: "groq", generateCoverLetter: true })
-    );
-    expect(res.status).toBe(200);
-    const json = await res.json();
-    expect(json.coverLetter).toBeDefined();
-
-    const fetchBody = JSON.parse(mockFetch.mock.calls[0][1].body);
-    const userText = fetchBody.messages[1].content;
-    expect(userText).toMatch(/cover letter/i);
-  });
-
-  it("prefers client apiKey over GROQ_API_KEY env var", async () => {
-    mockFetch.mockResolvedValueOnce(
-      new Response(JSON.stringify(validGroqResponse), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      })
-    );
-
-    const res = await POST(
-      makeRequest({ ...validBody, provider: "groq", apiKey: "my-client-groq" })
-    );
-    expect(res.status).toBe(200);
-
-    const fetchOptions = mockFetch.mock.calls[0][1];
-    expect(fetchOptions.headers.Authorization).toBe("Bearer my-client-groq");
-    expect(fetchOptions.headers.Authorization).not.toContain("test-groq-key");
-  });
-
   // --- AI phrase cleanup integration ---
-  it("cleans AI buzzwords from Gemini response sections", async () => {
+  it("cleans AI buzzwords from response sections", async () => {
     const responseWithBuzzwords = {
-      candidates: [
+      choices: [
         {
-          content: {
-            parts: [
-              {
-                text: JSON.stringify({
-                  sections: [
-                    {
-                      title: "Summary",
-                      content:
-                        "Spearheaded the development of cutting-edge applications by leveraging robust frameworks.",
-                    },
-                    {
-                      title: "Experience",
-                      content:
-                        "Utilized TypeScript in order to build holistic solutions.",
-                    },
-                  ],
-                }),
-              },
-            ],
+          message: {
+            content: JSON.stringify({
+              sections: [
+                {
+                  title: "Summary",
+                  content:
+                    "Spearheaded the development of cutting-edge applications by leveraging robust frameworks.",
+                },
+                {
+                  title: "Experience",
+                  content:
+                    "Utilized TypeScript in order to build holistic solutions.",
+                },
+              ],
+            }),
           },
         },
       ],
@@ -778,8 +463,6 @@ describe("POST /api/tailor", () => {
     expect(res.status).toBe(200);
 
     const json = await res.json();
-    // "Spearheaded" → "Led", "cutting-edge" → "modern",
-    // "leveraging" → "using", "robust" → "strong"
     expect(json.sections[0].content).not.toMatch(/spearheaded/i);
     expect(json.sections[0].content).not.toMatch(/cutting-edge/i);
     expect(json.sections[0].content).not.toMatch(/leveraging/i);
@@ -788,7 +471,6 @@ describe("POST /api/tailor", () => {
     expect(json.sections[0].content).toContain("modern");
     expect(json.sections[0].content).toContain("strong");
 
-    // "Utilized" → "Used", "in order to" → "to", "holistic" → "comprehensive"
     expect(json.sections[1].content).not.toMatch(/utilized/i);
     expect(json.sections[1].content).not.toMatch(/in order to/i);
     expect(json.sections[1].content).not.toMatch(/holistic/i);
@@ -798,20 +480,16 @@ describe("POST /api/tailor", () => {
 
   it("cleans AI buzzwords from cover letter", async () => {
     const responseWithCoverLetter = {
-      candidates: [
+      choices: [
         {
-          content: {
-            parts: [
-              {
-                text: JSON.stringify({
-                  sections: [
-                    { title: "Summary", content: "Software engineer" },
-                  ],
-                  coverLetter:
-                    "I am excited to facilitate the paradigm shift at your company.",
-                }),
-              },
-            ],
+          message: {
+            content: JSON.stringify({
+              sections: [
+                { title: "Summary", content: "Software engineer" },
+              ],
+              coverLetter:
+                "I am excited to facilitate the paradigm shift at your company.",
+            }),
           },
         },
       ],

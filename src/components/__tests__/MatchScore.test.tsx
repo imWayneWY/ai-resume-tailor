@@ -42,7 +42,7 @@ describe("MatchScore", () => {
     expect(screen.queryByText(/keywords not in resume/)).not.toBeInTheDocument();
   });
 
-  it("logs matched and missed keywords to console in development", () => {
+  it("logs matched and missed keywords to console", () => {
     const consoleSpy = jest.spyOn(console, "log").mockImplementation();
     try {
       render(<MatchScore {...defaultProps} />);

@@ -95,21 +95,19 @@ export default function MatchScore({
 
   const improvement = afterScore.matchCount - beforeScore.matchCount;
 
-  // Log keywords to console for developer inspection (dev only)
+  // Log keywords to browser console for inspection
   useEffect(() => {
-    if (process.env.NODE_ENV !== "production") {
-      if (afterScore.matchedKeywords.length > 0) {
-        console.log(
-          "[MatchScore] Matched keywords:",
-          afterScore.matchedKeywords.join(", ")
-        );
-      }
-      if (afterScore.missedKeywords.length > 0) {
-        console.log(
-          "[MatchScore] Unmatched keywords:",
-          afterScore.missedKeywords.join(", ")
-        );
-      }
+    if (afterScore.matchedKeywords.length > 0) {
+      console.log(
+        "[MatchScore] Matched keywords:",
+        afterScore.matchedKeywords.join(", ")
+      );
+    }
+    if (afterScore.missedKeywords.length > 0) {
+      console.log(
+        "[MatchScore] Unmatched keywords:",
+        afterScore.missedKeywords.join(", ")
+      );
     }
   }, [afterScore.matchedKeywords, afterScore.missedKeywords]);
 

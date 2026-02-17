@@ -10,17 +10,20 @@ interface MatchScoreProps {
 }
 
 function ScoreCircle({
-  percentage,
+  score,
+  total,
   label,
   size = 80,
 }: {
-  percentage: number;
+  score: number;
+  total: number;
   label: string;
   size?: number;
 }) {
   const strokeWidth = 6;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
+  const percentage = total > 0 ? (score / total) * 100 : 0;
   const offset = circumference - (percentage / 100) * circumference;
 
   const color =
@@ -62,7 +65,7 @@ function ScoreCircle({
           />
         </svg>
         <div className="absolute inset-0 flex items-center justify-center">
-          <span className="text-lg font-bold">{percentage}%</span>
+          <span className="text-lg font-bold">{score}</span>
         </div>
       </div>
       <span className="text-xs font-medium text-muted">{label}</span>
@@ -90,7 +93,15 @@ export default function MatchScore({
     [tailoredResume, jdKeywords]
   );
 
-  const improvement = afterScore.matchPercentage - beforeScore.matchPercentage;
+  const improvement = afterScore.matchCount - beforeScore.matchCount;
+
+  // Log missed keywords to console for developer inspection
+  if (afterScore.missedKeywords.length > 0) {
+    console.log(
+      "[MatchScore] Unmatched keywords:",
+      afterScore.missedKeywords.join(", ")
+    );
+  }
 
   return (
     <div className="rounded-lg border border-border bg-white p-4 shadow-sm sm:p-6">
@@ -101,7 +112,8 @@ export default function MatchScore({
       {/* Score circles */}
       <div className="flex items-center justify-center gap-6 sm:gap-8">
         <ScoreCircle
-          percentage={beforeScore.matchPercentage}
+          score={beforeScore.matchCount}
+          total={beforeScore.totalKeywords}
           label="Before"
         />
 
@@ -123,13 +135,14 @@ export default function MatchScore({
           </svg>
           {improvement > 0 && (
             <span className="text-xs font-semibold text-green-600">
-              +{improvement}%
+              +{improvement}
             </span>
           )}
         </div>
 
         <ScoreCircle
-          percentage={afterScore.matchPercentage}
+          score={afterScore.matchCount}
+          total={afterScore.totalKeywords}
           label="After"
         />
       </div>
@@ -137,28 +150,9 @@ export default function MatchScore({
       {/* Stats */}
       <div className="mt-4 flex justify-center gap-6 text-xs text-muted">
         <span>
-          {afterScore.matchCount}/{afterScore.totalKeywords} keywords matched
+          {afterScore.matchCount} of {afterScore.totalKeywords} keywords matched
         </span>
       </div>
-
-      {/* Missed keywords */}
-      {afterScore.missedKeywords.length > 0 && (
-        <details className="mt-4">
-          <summary className="cursor-pointer text-xs font-medium text-muted hover:text-foreground">
-            {afterScore.missedKeywords.length} keywords not in resume
-          </summary>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {afterScore.missedKeywords.map((kw) => (
-              <span
-                key={kw}
-                className="rounded-full bg-red-50 px-2 py-0.5 text-xs text-red-600"
-              >
-                {kw}
-              </span>
-            ))}
-          </div>
-        </details>
-      )}
     </div>
   );
 }

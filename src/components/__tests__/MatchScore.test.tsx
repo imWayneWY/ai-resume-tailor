@@ -43,7 +43,7 @@ describe("MatchScore", () => {
   });
 
   it("logs matched and missed keywords to console", () => {
-    const consoleSpy = jest.spyOn(console, "log").mockImplementation();
+    const consoleSpy = jest.spyOn(console, "debug").mockImplementation();
     try {
       render(<MatchScore {...defaultProps} />);
       expect(consoleSpy).toHaveBeenCalledWith(

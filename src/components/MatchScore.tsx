@@ -95,16 +95,16 @@ export default function MatchScore({
 
   const improvement = afterScore.matchCount - beforeScore.matchCount;
 
-  // Log keywords to browser console for inspection
+  // Log keywords to browser console for inspection (use console.debug to reduce noise)
   useEffect(() => {
     if (afterScore.matchedKeywords.length > 0) {
-      console.log(
+      console.debug(
         "[MatchScore] Matched keywords:",
         afterScore.matchedKeywords.join(", ")
       );
     }
     if (afterScore.missedKeywords.length > 0) {
-      console.log(
+      console.debug(
         "[MatchScore] Unmatched keywords:",
         afterScore.missedKeywords.join(", ")
       );

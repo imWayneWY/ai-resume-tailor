@@ -5,7 +5,8 @@
  * - Extracts both single keywords and multi-word phrases (bigrams)
  * - Basic suffix stemming for better matching (developing ↔ development)
  * - Short tech keyword allowlist (go, r, c, ai, ml, etc.)
- * - Aggressive stop word filtering for resume/JD context
+ * - Aggressive stop word filtering for resume/JD context (~350+ stop words)
+ * - Generic compound word filtering (ai-augmented, user-friendly, non-core, etc.)
  */
 
 const STOP_WORDS = new Set([
@@ -27,6 +28,41 @@ const STOP_WORDS = new Set([
   "here", "there", "when", "where", "why", "how", "all", "each", "every",
   "few", "more", "most", "other", "some", "such", "no", "own", "same",
   "than", "too", "very", "just", "also", "now", "etc", "within",
+  // Generic verbs & adverbs (appear in any context)
+  "ask", "bring", "call", "calls", "check", "come", "find", "get", "give",
+  "keep", "know", "let", "look", "move", "put", "run", "say", "see", "set",
+  "show", "start", "tell", "think", "try", "turn", "use", "want",
+  "often", "always", "never", "sometimes", "usually", "regularly",
+  "currently", "recently", "typically", "generally", "specifically",
+  "proactively", "actively", "directly", "quickly", "rapidly",
+  // Generic adjectives
+  "able", "available", "best", "big", "certain", "clear", "common",
+  "comprehensive", "current", "deep", "different", "early", "easy",
+  "enough", "expected", "first", "following", "free", "full", "general",
+  "given", "ideal", "important", "large", "last", "late", "little", "local",
+  "long", "low", "main", "major", "many", "next", "old", "open", "part",
+  "particular", "possible", "potential", "previous", "primary", "public",
+  "real", "related", "relevant", "right", "second", "several", "short",
+  "significant", "similar", "simple", "small", "special", "specific",
+  "top", "total", "true", "wide", "whole",
+  // Generic nouns
+  "areas", "area", "aspect", "aspects", "base", "basis", "case", "cases",
+  "change", "changes", "class", "context", "cost", "day", "days", "detail",
+  "details", "end", "example", "examples", "fact", "field", "focus",
+  "form", "goal", "goals", "group", "groups", "hand", "idea", "ideas",
+  "impact", "information", "interest", "issue", "issues", "item", "items",
+  "kind", "line", "list", "lot", "matter", "member", "members", "method",
+  "methods", "mind", "model", "models", "name", "number", "numbers",
+  "order", "outcome", "outcomes", "part", "parts", "path", "people",
+  "person", "place", "plan", "plans", "point", "points", "practice",
+  "practices", "problem", "problems", "process", "processes", "program",
+  "programs", "question", "questions", "range", "reason", "reasons",
+  "record", "result", "results", "sense", "series", "service", "services",
+  "side", "situation", "size", "solution", "solutions", "sort", "source",
+  "space", "stage", "standard", "standards", "state", "step", "steps",
+  "story", "stuff", "success", "system", "systems", "terms", "thing",
+  "things", "thought", "time", "times", "topic", "topics", "type", "types",
+  "value", "view", "views", "way", "ways", "word", "words",
   // Job posting filler
   "role", "position", "job", "work", "working", "team", "company", "looking",
   "seeking", "required", "requirements", "responsibilities", "qualifications",
@@ -36,6 +72,27 @@ const STOP_WORDS = new Set([
   "across", "along", "ensure", "take", "make", "join", "apply", "please",
   "candidate", "candidates", "opportunity", "read", "learn", "create",
   "world", "desire", "mission", "help", "culture", "values",
+  // Job posting filler (expanded)
+  "anyone", "applicant", "applicants", "applying", "authorized",
+  "career", "encouraged", "employment", "entails", "equivalent", "hire",
+  "hiring", "hours", "interview", "offer", "offering", "offers", "post",
+  "posting", "rotation", "rotations", "salary", "share", "sharing",
+  "title", "vacancy",
+  // Corporate / business buzzwords (not technical skills)
+  "blog", "business", "calls", "creation", "customers", "customer",
+  "description", "describes", "driving", "engineering", "engineers",
+  "enhancements", "environment", "environments", "explorations",
+  "feedback", "foster", "fostering", "framework", "frameworks",
+  "growth", "impactful", "initiatives", "innovation", "innovative",
+  "insights", "interfaces", "leadership", "levels", "organization",
+  "organizations", "ownership", "participate", "participating",
+  "play", "products", "product", "professional", "professionals",
+  "progress", "rapid", "reliable", "robust", "stakeholders",
+  "stakeholder", "strategy", "strategic", "technology", "technologies",
+  "vision", "visionary", "virtual", "viewable",
+  // Location names (not skills)
+  "alberta", "british", "columbia", "ontario", "saskatchewan", "quebec",
+  "manitoba", "provinces", "canada", "canadian",
   // Resume-generic words (appear in every resume regardless of fit)
   "build", "built", "develop", "developed", "developing", "development",
   "manage", "managed", "managing", "management", "support", "supported",
@@ -49,6 +106,14 @@ const STOP_WORDS = new Set([
   "key", "effectively", "efficient", "successfully",
   "contribute", "contributed", "contributing", "established", "utilize",
   "utilized", "utilizing", "facilitate", "facilitated", "facilitating",
+  "engage", "engaged", "engaging", "engagement", "advocate", "advocating",
+  "analyze", "analyzed", "analyzing", "enable", "enabled", "enabling",
+  "evaluate", "evaluated", "evaluating", "execute", "executed", "executing",
+  "identify", "identified", "identifying", "oversee", "overseeing",
+  "perform", "performed", "performing", "resolve", "resolved", "resolving",
+  "review", "reviewed", "reviewing", "streamline", "streamlined",
+  "transform", "transformed", "transforming",
+  "combine", "combined", "combining", "expedite", "expedited",
 ]);
 
 const MIN_WORD_LENGTH = 3;
@@ -150,9 +215,56 @@ export function stemWord(word: string): string {
 }
 
 /**
+ * Generic modifier words that make compound terms non-technical when combined.
+ * e.g., "ai-augmented" → "ai" is tech but "augmented" is generic → filter it out
+ * "user-friendly" → both parts are generic → filter it out
+ * But "server-side" or "type-safe" → recognized phrases, kept via KNOWN_PHRASES
+ */
+const GENERIC_COMPOUND_PARTS = new Set([
+  // Generic modifiers often used as prefixes/suffixes in JD compound words
+  "augmented", "enabled", "focused", "friendly", "oriented", "driven",
+  "based", "aware", "ready", "native", "first", "centric", "facing",
+  "core", "related", "specific", "wide", "like", "free",
+  // Generic prefixes
+  "non", "pre", "post", "multi", "cross", "self", "co", "re",
+  // Generic nouns used as compound prefixes
+  "user", "team", "data", "time", "cost", "goal",
+]);
+
+/**
+ * Check if a hyphenated compound word is generic (not a real skill).
+ * Returns true if the word should be filtered out.
+ * Known phrases (from KNOWN_PHRASES) are never filtered — they're detected separately.
+ */
+export function isGenericCompound(word: string): boolean {
+  if (!word.includes("-")) return false;
+
+  const parts = word.split("-");
+  // Filter if ALL parts are stop words or generic compound parts
+  const allGeneric = parts.every(
+    (p) => STOP_WORDS.has(p) || GENERIC_COMPOUND_PARTS.has(p) || p.length < 2
+  );
+  if (allGeneric) return true;
+
+  // Filter if the non-tech part is a generic modifier
+  // e.g., "ai-augmented" — "ai" is tech but "augmented" is just a modifier
+  const hasOnlyGenericModifiers = parts.every(
+    (p) =>
+      STOP_WORDS.has(p) ||
+      GENERIC_COMPOUND_PARTS.has(p) ||
+      SHORT_KEYWORD_ALLOWLIST.has(p) ||
+      p.length < 2
+  );
+  if (hasOnlyGenericModifiers) return true;
+
+  return false;
+}
+
+/**
  * Extract significant keywords from text.
  * Returns single words and recognized multi-word phrases, normalized to lowercase.
- * Filters out stop words, short words (unless in allowlist), and pure numbers.
+ * Filters out stop words, short words (unless in allowlist), pure numbers,
+ * and generic compound words (e.g., "ai-augmented", "user-friendly").
  */
 export function extractKeywords(text: string): Set<string> {
   const keywords = new Set<string>();
@@ -174,6 +286,7 @@ export function extractKeywords(text: string): Set<string> {
     if (
       !/^\d+$/.test(cleaned) &&
       !STOP_WORDS.has(cleaned) &&
+      !isGenericCompound(cleaned) &&
       (cleaned.length >= MIN_WORD_LENGTH || SHORT_KEYWORD_ALLOWLIST.has(cleaned))
     ) {
       keywords.add(cleaned);

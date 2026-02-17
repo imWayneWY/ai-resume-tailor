@@ -2,6 +2,7 @@ import {
   extractKeywords,
   calculateMatchScore,
   stemWord,
+  isGenericCompound,
 } from "@/lib/keyword-matcher";
 
 describe("stemWord", () => {
@@ -240,5 +241,154 @@ describe("calculateMatchScore", () => {
 
     // 1/3 = 33.33...% → 33%
     expect(result.matchPercentage).toBe(33);
+  });
+});
+
+describe("extractKeywords — expanded stop words", () => {
+  it("filters out generic English words from JD", () => {
+    const keywords = extractKeywords(
+      "Anyone can run this first available area currently"
+    );
+    expect(keywords.has("anyone")).toBe(false);
+    expect(keywords.has("run")).toBe(false);
+    expect(keywords.has("first")).toBe(false);
+    expect(keywords.has("available")).toBe(false);
+    expect(keywords.has("area")).toBe(false);
+    expect(keywords.has("currently")).toBe(false);
+  });
+
+  it("filters out job posting boilerplate words", () => {
+    const keywords = extractKeywords(
+      "applicant applicants applying authorized encouraged employment hire rotation"
+    );
+    expect(keywords.has("applicant")).toBe(false);
+    expect(keywords.has("applicants")).toBe(false);
+    expect(keywords.has("applying")).toBe(false);
+    expect(keywords.has("authorized")).toBe(false);
+    expect(keywords.has("encouraged")).toBe(false);
+    expect(keywords.has("employment")).toBe(false);
+    expect(keywords.has("hire")).toBe(false);
+    expect(keywords.has("rotation")).toBe(false);
+  });
+
+  it("filters out corporate buzzwords", () => {
+    const keywords = extractKeywords(
+      "impactful initiatives insights leadership ownership foster proactively"
+    );
+    expect(keywords.has("impactful")).toBe(false);
+    expect(keywords.has("initiatives")).toBe(false);
+    expect(keywords.has("insights")).toBe(false);
+    expect(keywords.has("leadership")).toBe(false);
+    expect(keywords.has("ownership")).toBe(false);
+    expect(keywords.has("foster")).toBe(false);
+    expect(keywords.has("proactively")).toBe(false);
+  });
+
+  it("filters out Canadian province names", () => {
+    const keywords = extractKeywords(
+      "Alberta British Columbia Ontario Saskatchewan Quebec"
+    );
+    expect(keywords.has("alberta")).toBe(false);
+    expect(keywords.has("british")).toBe(false);
+    expect(keywords.has("columbia")).toBe(false);
+    expect(keywords.has("ontario")).toBe(false);
+    expect(keywords.has("saskatchewan")).toBe(false);
+    expect(keywords.has("quebec")).toBe(false);
+  });
+
+  it("filters out expanded resume-generic verbs", () => {
+    const keywords = extractKeywords(
+      "engaged analyzing enabled executed identified resolved streamlined"
+    );
+    expect(keywords.has("engaged")).toBe(false);
+    expect(keywords.has("analyzing")).toBe(false);
+    expect(keywords.has("enabled")).toBe(false);
+    expect(keywords.has("executed")).toBe(false);
+    expect(keywords.has("identified")).toBe(false);
+    expect(keywords.has("resolved")).toBe(false);
+    expect(keywords.has("streamlined")).toBe(false);
+  });
+
+  it("still keeps real tech keywords", () => {
+    const keywords = extractKeywords(
+      "React TypeScript Docker Kubernetes Python SQL agile scrum"
+    );
+    expect(keywords.has("react")).toBe(true);
+    expect(keywords.has("typescript")).toBe(true);
+    expect(keywords.has("docker")).toBe(true);
+    expect(keywords.has("kubernetes")).toBe(true);
+    expect(keywords.has("python")).toBe(true);
+    expect(keywords.has("sql")).toBe(true);
+    expect(keywords.has("agile")).toBe(true);
+    expect(keywords.has("scrum")).toBe(true);
+  });
+
+  it("filters out generic adjectives", () => {
+    const keywords = extractKeywords(
+      "comprehensive robust reliable rapid significant"
+    );
+    expect(keywords.has("comprehensive")).toBe(false);
+    expect(keywords.has("robust")).toBe(false);
+    expect(keywords.has("reliable")).toBe(false);
+    expect(keywords.has("rapid")).toBe(false);
+    expect(keywords.has("significant")).toBe(false);
+  });
+
+  it("filters out generic nouns", () => {
+    const keywords = extractKeywords(
+      "areas details outcomes systems services topic"
+    );
+    expect(keywords.has("areas")).toBe(false);
+    expect(keywords.has("details")).toBe(false);
+    expect(keywords.has("outcomes")).toBe(false);
+    expect(keywords.has("systems")).toBe(false);
+    expect(keywords.has("services")).toBe(false);
+    expect(keywords.has("topic")).toBe(false);
+  });
+});
+
+describe("isGenericCompound", () => {
+  it("identifies generic compound words", () => {
+    expect(isGenericCompound("ai-augmented")).toBe(true);
+    expect(isGenericCompound("ai-enabled")).toBe(true);
+    expect(isGenericCompound("user-friendly")).toBe(true);
+    expect(isGenericCompound("non-core")).toBe(true);
+    expect(isGenericCompound("self-driven")).toBe(true);
+  });
+
+  it("keeps real tech compound terms", () => {
+    expect(isGenericCompound("webpack")).toBe(false);
+    expect(isGenericCompound("postgresql")).toBe(false);
+    expect(isGenericCompound("redis")).toBe(false);
+  });
+
+  it("returns false for non-hyphenated words", () => {
+    expect(isGenericCompound("react")).toBe(false);
+    expect(isGenericCompound("typescript")).toBe(false);
+  });
+
+  it("filters compound words where all parts are stop words", () => {
+    expect(isGenericCompound("on-call")).toBe(true);
+  });
+});
+
+describe("extractKeywords — compound word filtering", () => {
+  it("filters generic compound words from JD text", () => {
+    const keywords = extractKeywords(
+      "We need ai-augmented ai-enabled user-friendly non-core on-call engineers"
+    );
+    expect(keywords.has("ai-augmented")).toBe(false);
+    expect(keywords.has("ai-enabled")).toBe(false);
+    expect(keywords.has("user-friendly")).toBe(false);
+    expect(keywords.has("non-core")).toBe(false);
+    expect(keywords.has("on-call")).toBe(false);
+  });
+
+  it("still extracts known tech hyphenated phrases", () => {
+    const keywords = extractKeywords(
+      "Experience with real-time systems and cross-functional teams"
+    );
+    expect(keywords.has("real-time")).toBe(true);
+    expect(keywords.has("cross-functional")).toBe(true);
   });
 });

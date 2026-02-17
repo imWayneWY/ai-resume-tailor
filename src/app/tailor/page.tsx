@@ -3,13 +3,6 @@
 import type React from "react";
 import { useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import {
-  GEMINI_API_KEY_STORAGE_KEY,
-  GROQ_API_KEY_STORAGE_KEY,
-  MODEL_PROVIDER_STORAGE_KEY,
-  DEFAULT_MODEL_PROVIDER,
-} from "@/lib/constants";
-import type { ModelProvider } from "@/lib/constants";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
@@ -132,29 +125,11 @@ export default function TailorPage() {
     setIsLoading(true);
 
     try {
-      // Read settings from localStorage
-      let storedApiKey: string | null = null;
-      let provider: ModelProvider = DEFAULT_MODEL_PROVIDER;
-      try {
-        const storedProvider = localStorage.getItem(MODEL_PROVIDER_STORAGE_KEY);
-        if (storedProvider === "gemini" || storedProvider === "groq") {
-          provider = storedProvider;
-        }
-        const keyStorageKey = provider === "groq" ? GROQ_API_KEY_STORAGE_KEY : GEMINI_API_KEY_STORAGE_KEY;
-        storedApiKey = localStorage.getItem(keyStorageKey);
-      } catch {
-        // localStorage unavailable — proceed without key
-      }
-
-      const requestBody: Record<string, unknown> = {
+      const requestBody = {
         resume,
         jobDescription,
         generateCoverLetter,
-        provider,
       };
-      if (storedApiKey && storedApiKey.trim().length > 0) {
-        requestBody.apiKey = storedApiKey;
-      }
 
       const response = await fetch("/api/tailor", {
         method: "POST",

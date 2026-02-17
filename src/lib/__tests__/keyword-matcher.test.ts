@@ -356,7 +356,7 @@ describe("isGenericCompound", () => {
     expect(isGenericCompound("self-driven")).toBe(true);
   });
 
-  it("keeps real tech compound terms", () => {
+  it("keeps non-hyphenated tech terms", () => {
     expect(isGenericCompound("webpack")).toBe(false);
     expect(isGenericCompound("postgresql")).toBe(false);
     expect(isGenericCompound("redis")).toBe(false);
@@ -369,6 +369,14 @@ describe("isGenericCompound", () => {
 
   it("filters compound words where all parts are stop words", () => {
     expect(isGenericCompound("on-call")).toBe(true);
+  });
+
+  it("exempts known technical phrases from filtering", () => {
+    expect(isGenericCompound("real-time")).toBe(false);
+    expect(isGenericCompound("cross-functional")).toBe(false);
+    expect(isGenericCompound("end-to-end")).toBe(false);
+    expect(isGenericCompound("event-driven")).toBe(false);
+    expect(isGenericCompound("type-safe")).toBe(false);
   });
 });
 
@@ -390,5 +398,12 @@ describe("extractKeywords — compound word filtering", () => {
     );
     expect(keywords.has("real-time")).toBe(true);
     expect(keywords.has("cross-functional")).toBe(true);
+  });
+
+  it("preserves end-to-end despite all parts being stop words", () => {
+    const keywords = extractKeywords(
+      "Wrote end-to-end tests for the application"
+    );
+    expect(keywords.has("end-to-end")).toBe(true);
   });
 });

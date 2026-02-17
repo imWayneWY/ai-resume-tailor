@@ -79,7 +79,7 @@ const STOP_WORDS = new Set([
   "posting", "rotation", "rotations", "salary", "share", "sharing",
   "title", "vacancy",
   // Corporate / business buzzwords (not technical skills)
-  "blog", "business", "calls", "creation", "customers", "customer",
+  "blog", "business", "creation", "customers", "customer",
   "description", "describes", "driving", "engineering", "engineers",
   "enhancements", "environment", "environments", "explorations",
   "feedback", "foster", "fostering", "framework", "frameworks",
@@ -144,7 +144,7 @@ const KNOWN_PHRASES = [
   "web3", "smart contracts", "block chain", "blockchain",
   "rest api", "restful api", "graphql api",
   "user experience", "user interface",
-  "unit testing", "integration testing", "end to end",
+  "unit testing", "integration testing", "end to end", "end-to-end",
   "version control", "code review", "pull request",
   "responsive design", "web accessibility", "accessibility",
   "performance optimization", "search engine optimization", "seo",
@@ -159,6 +159,12 @@ const KNOWN_PHRASES = [
   "sql server",
   "type safety", "type-safe",
 ];
+
+/**
+ * Set of known phrases for efficient lookup.
+ * Used by isGenericCompound to exempt recognized technical terms.
+ */
+const KNOWN_PHRASES_SET = new Set(KNOWN_PHRASES);
 
 /**
  * Basic suffix stemming. Reduces common word forms to a shared root
@@ -234,10 +240,18 @@ const GENERIC_COMPOUND_PARTS = new Set([
 /**
  * Check if a hyphenated compound word is generic (not a real skill).
  * Returns true if the word should be filtered out.
- * Known phrases (from KNOWN_PHRASES) are never filtered — they're detected separately.
+ * Known phrases (from KNOWN_PHRASES) are exempted — they are recognized
+ * technical terms detected separately in extractKeywords().
  */
 export function isGenericCompound(word: string): boolean {
   if (!word.includes("-")) return false;
+
+  // Never filter known technical phrases
+  const lowerWord = word.toLowerCase();
+  if (KNOWN_PHRASES_SET.has(lowerWord)) return false;
+  // Also check with hyphens normalized to spaces (e.g., "end-to-end" → "end to end")
+  const spaceNormalized = lowerWord.replace(/-/g, " ");
+  if (KNOWN_PHRASES_SET.has(spaceNormalized)) return false;
 
   const parts = word.split("-");
   // Filter if ALL parts are stop words or generic compound parts

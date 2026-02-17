@@ -27,6 +27,9 @@ describe("MatchScore", () => {
     // Should show raw numbers, not percentages
     const percentages = screen.queryAllByText(/%$/);
     expect(percentages.length).toBe(0);
+    // Verify numeric score values are actually rendered
+    const numericValues = screen.getAllByText(/^\d+$/);
+    expect(numericValues.length).toBeGreaterThanOrEqual(2);
   });
 
   it("shows keywords matched count", () => {
@@ -39,15 +42,17 @@ describe("MatchScore", () => {
     expect(screen.queryByText(/keywords not in resume/)).not.toBeInTheDocument();
   });
 
-  it("logs missed keywords to console", () => {
+  it("logs missed keywords to console in development", () => {
     const consoleSpy = jest.spyOn(console, "log").mockImplementation();
-    render(<MatchScore {...defaultProps} />);
-
-    expect(consoleSpy).toHaveBeenCalledWith(
-      "[MatchScore] Unmatched keywords:",
-      expect.any(String)
-    );
-    consoleSpy.mockRestore();
+    try {
+      render(<MatchScore {...defaultProps} />);
+      expect(consoleSpy).toHaveBeenCalledWith(
+        "[MatchScore] Unmatched keywords:",
+        expect.any(String)
+      );
+    } finally {
+      consoleSpy.mockRestore();
+    }
   });
 
   it("does not crash with empty inputs", () => {

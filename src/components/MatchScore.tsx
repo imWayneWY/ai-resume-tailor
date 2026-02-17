@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useEffect } from "react";
 import { extractKeywords, calculateMatchScore } from "@/lib/keyword-matcher";
 
 interface MatchScoreProps {
@@ -95,13 +95,15 @@ export default function MatchScore({
 
   const improvement = afterScore.matchCount - beforeScore.matchCount;
 
-  // Log missed keywords to console for developer inspection
-  if (afterScore.missedKeywords.length > 0) {
-    console.log(
-      "[MatchScore] Unmatched keywords:",
-      afterScore.missedKeywords.join(", ")
-    );
-  }
+  // Log missed keywords to console for developer inspection (dev only)
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "production" && afterScore.missedKeywords.length > 0) {
+      console.log(
+        "[MatchScore] Unmatched keywords:",
+        afterScore.missedKeywords.join(", ")
+      );
+    }
+  }, [afterScore.missedKeywords]);
 
   return (
     <div className="rounded-lg border border-border bg-white p-4 shadow-sm sm:p-6">

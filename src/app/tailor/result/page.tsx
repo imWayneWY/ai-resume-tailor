@@ -63,9 +63,9 @@ export default function ResultPage() {
       const storedKeywords = sessionStorage.getItem("tailorLlmKeywords");
       if (storedKeywords) {
         try {
-          const parsed2 = JSON.parse(storedKeywords);
-          if (Array.isArray(parsed2)) {
-            setLlmKeywords(parsed2);
+          const parsedKeywords = JSON.parse(storedKeywords);
+          if (Array.isArray(parsedKeywords)) {
+            setLlmKeywords(parsedKeywords);
           }
         } catch {
           // Fall back to regex extraction

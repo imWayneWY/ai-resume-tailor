@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
 
   if (!endpoint || !apiKey || !deployment) {
     return NextResponse.json(
-      { error: "Azure OpenAI is not configured." },
+      { error: "Azure OpenAI is not configured. Please contact the administrator." },
       { status: 503 }
     );
   }

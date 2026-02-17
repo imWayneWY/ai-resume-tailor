@@ -35,9 +35,17 @@ Every section of the resume must be actively tailored — not just the summary. 
 ### Experience — REWRITE EVERY BULLET
 - DO NOT copy bullets unchanged from the original resume. Every bullet should be actively rephrased.
 - For each bullet point, identify at least one keyword or phrase from the JD that relates to the work described, and weave it in naturally.
+- NEVER append JD keywords at the end of an existing bullet as a tacked-on phrase. This is the #1 mistake to avoid:
+  ✗ BAD: "Led codebase migration from JS to TS, reducing errors, with a focus on collaborative development and knowledge sharing"
+  ✗ BAD: "Built React components, leveraging cross-functional collaboration and driving engineering excellence"
+  The keywords feel forced and disconnected from the actual achievement.
+  ✓ GOOD: "Led collaborative migration of codebase from JavaScript to TypeScript across 3 teams, reducing runtime errors by 40%"
+  ✓ GOOD: "Partnered with design and product teams to build accessible React components, improving user engagement by 25%"
+  The keywords are woven into the narrative — they describe HOW the work was done, not bolted on after.
+- Rewrite the entire sentence structure when needed to integrate keywords naturally. It should read like the candidate wrote it for this specific role.
 - Use the JD's exact terminology when the candidate has equivalent experience:
   • JD says "CI/CD pipelines" and candidate "set up automated deployments" → write "Built CI/CD pipelines for automated deployments"
-  • JD says "cross-functional collaboration" and candidate "worked with designers" → write "Cross-functional collaboration with design and product teams"
+  • JD says "cross-functional collaboration" and candidate "worked with designers" → write "Collaborated cross-functionally with design and product teams to deliver..."
   • JD says "distributed systems" and candidate "built microservices" → write "Designed distributed systems using microservices architecture"
 - Quantify achievements where possible (numbers, percentages, metrics)
 - Reorder bullets within each role so the most JD-relevant ones come first
@@ -49,9 +57,11 @@ Every section of the resume must be actively tailored — not just the summary. 
 ### Keyword Integration Strategy
 1. First, identify the top 10-15 technical keywords and phrases from the JD (technologies, methodologies, tools, domain terms)
 2. For each keyword, find the best place in the resume to naturally incorporate it
-3. Aim to mention each important JD keyword at least once across the entire resume
-4. Use exact JD phrasing, not synonyms — ATS systems match exact terms
-5. Never fabricate — only use a JD keyword if the candidate's actual experience supports it
+3. Restructure the sentence so the keyword is integral to the meaning, not decorative
+4. Aim to mention each important JD keyword at least once across the entire resume
+5. Use exact JD phrasing, not synonyms — ATS systems match exact terms
+6. Never fabricate — only use a JD keyword if the candidate's actual experience supports it
+7. If a keyword cannot be naturally integrated, it is better to omit it than to force it in awkwardly
 
 ### General
 - Do NOT fabricate experience, skills, or achievements the candidate doesn't have

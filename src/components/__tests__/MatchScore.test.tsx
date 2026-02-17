@@ -32,9 +32,9 @@ describe("MatchScore", () => {
     expect(numericValues.length).toBeGreaterThanOrEqual(2);
   });
 
-  it("shows keywords matched count", () => {
+  it("does not show keyword count text in UI", () => {
     render(<MatchScore {...defaultProps} />);
-    expect(screen.getByText(/keywords matched/)).toBeInTheDocument();
+    expect(screen.queryByText(/keywords matched/)).not.toBeInTheDocument();
   });
 
   it("does not show missed keywords in UI", () => {
@@ -42,10 +42,14 @@ describe("MatchScore", () => {
     expect(screen.queryByText(/keywords not in resume/)).not.toBeInTheDocument();
   });
 
-  it("logs missed keywords to console in development", () => {
+  it("logs matched and missed keywords to console in development", () => {
     const consoleSpy = jest.spyOn(console, "log").mockImplementation();
     try {
       render(<MatchScore {...defaultProps} />);
+      expect(consoleSpy).toHaveBeenCalledWith(
+        "[MatchScore] Matched keywords:",
+        expect.any(String)
+      );
       expect(consoleSpy).toHaveBeenCalledWith(
         "[MatchScore] Unmatched keywords:",
         expect.any(String)
@@ -93,8 +97,4 @@ describe("MatchScore", () => {
     expect(improvement).not.toBeInTheDocument();
   });
 
-  it("shows 'X of Y keywords matched' format", () => {
-    render(<MatchScore {...defaultProps} />);
-    expect(screen.getByText(/\d+ of \d+ keywords matched/)).toBeInTheDocument();
-  });
 });

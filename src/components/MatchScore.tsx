@@ -7,6 +7,8 @@ interface MatchScoreProps {
   originalResume: string;
   tailoredResume: string;
   jobDescription: string;
+  /** LLM-extracted keywords from /api/extract-keywords. Falls back to regex extraction if not provided. */
+  llmKeywords?: string[];
 }
 
 function ScoreCircle({
@@ -77,11 +79,15 @@ export default function MatchScore({
   originalResume,
   tailoredResume,
   jobDescription,
+  llmKeywords,
 }: MatchScoreProps) {
-  const jdKeywords = useMemo(
-    () => extractKeywords(jobDescription),
-    [jobDescription]
-  );
+  // Use LLM-extracted keywords if available, otherwise fall back to regex
+  const jdKeywords = useMemo(() => {
+    if (llmKeywords && llmKeywords.length > 0) {
+      return new Set(llmKeywords.map((k) => k.toLowerCase().trim()));
+    }
+    return extractKeywords(jobDescription);
+  }, [jobDescription, llmKeywords]);
 
   const beforeScore = useMemo(
     () => calculateMatchScore(originalResume, jdKeywords),
@@ -95,8 +101,13 @@ export default function MatchScore({
 
   const improvement = afterScore.matchCount - beforeScore.matchCount;
 
+  const usingLlm = !!(llmKeywords && llmKeywords.length > 0);
+
   // Log keywords to browser console for inspection (use console.debug to reduce noise)
   useEffect(() => {
+    console.debug(
+      `[MatchScore] Using ${usingLlm ? "LLM" : "regex"}-extracted keywords (${jdKeywords.size} total)`
+    );
     if (afterScore.matchedKeywords.length > 0) {
       console.debug(
         "[MatchScore] Matched keywords:",
@@ -109,7 +120,7 @@ export default function MatchScore({
         afterScore.missedKeywords.join(", ")
       );
     }
-  }, [afterScore.matchedKeywords, afterScore.missedKeywords]);
+  }, [afterScore.matchedKeywords, afterScore.missedKeywords, jdKeywords.size, usingLlm]);
 
   return (
     <div className="rounded-lg border border-border bg-white p-4 shadow-sm sm:p-6">

@@ -97,4 +97,87 @@ describe("MatchScore", () => {
     expect(improvement).not.toBeInTheDocument();
   });
 
+  describe("LLM keywords", () => {
+    it("uses llmKeywords when provided", () => {
+      const consoleSpy = jest.spyOn(console, "debug").mockImplementation();
+      try {
+        render(
+          <MatchScore
+            originalResume="I know React"
+            tailoredResume="I know React and TypeScript"
+            jobDescription="anything here"
+            llmKeywords={["react", "typescript"]}
+          />
+        );
+        // Should log that LLM keywords are used
+        expect(consoleSpy).toHaveBeenCalledWith(
+          expect.stringContaining("LLM")
+        );
+      } finally {
+        consoleSpy.mockRestore();
+      }
+    });
+
+    it("falls back to regex when llmKeywords is empty", () => {
+      const consoleSpy = jest.spyOn(console, "debug").mockImplementation();
+      try {
+        render(
+          <MatchScore
+            originalResume="I know React"
+            tailoredResume="I know React"
+            jobDescription="React TypeScript"
+            llmKeywords={[]}
+          />
+        );
+        expect(consoleSpy).toHaveBeenCalledWith(
+          expect.stringContaining("regex")
+        );
+      } finally {
+        consoleSpy.mockRestore();
+      }
+    });
+
+    it("falls back to regex when llmKeywords is undefined", () => {
+      const consoleSpy = jest.spyOn(console, "debug").mockImplementation();
+      try {
+        render(
+          <MatchScore
+            originalResume="I know React"
+            tailoredResume="I know React"
+            jobDescription="React TypeScript"
+          />
+        );
+        expect(consoleSpy).toHaveBeenCalledWith(
+          expect.stringContaining("regex")
+        );
+      } finally {
+        consoleSpy.mockRestore();
+      }
+    });
+
+    it("matches LLM keywords against resume text using stemming", () => {
+      const consoleSpy = jest.spyOn(console, "debug").mockImplementation();
+      try {
+        render(
+          <MatchScore
+            originalResume="I am optimizing React applications"
+            tailoredResume="I am optimizing React applications with TypeScript"
+            jobDescription="anything"
+            llmKeywords={["react", "typescript", "optimization", "kubernetes"]}
+          />
+        );
+        // Check that matched keywords include react and typescript
+        const matchedCall = consoleSpy.mock.calls.find(
+          (c) => typeof c[0] === "string" && c[0].includes("Matched keywords")
+        );
+        expect(matchedCall).toBeDefined();
+        const matchedStr = matchedCall![1] as string;
+        expect(matchedStr).toContain("react");
+        expect(matchedStr).toContain("typescript");
+      } finally {
+        consoleSpy.mockRestore();
+      }
+    });
+  });
+
 });

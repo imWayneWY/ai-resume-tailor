@@ -158,12 +158,20 @@ describe("TailorPage", () => {
     const apiResponse = {
       sections: [{ title: "Summary", content: "Test" }],
     };
-    mockFetch.mockResolvedValueOnce(
-      createMockResponse(JSON.stringify(apiResponse), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      })
-    );
+    // Mock tailor response and keyword extraction response (fired in parallel)
+    mockFetch
+      .mockResolvedValueOnce(
+        createMockResponse(JSON.stringify(apiResponse), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      )
+      .mockResolvedValueOnce(
+        createMockResponse(JSON.stringify({ keywords: ["react"] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      );
 
     render(<TailorPage />);
 
@@ -191,15 +199,22 @@ describe("TailorPage", () => {
 
   it("shows error on API failure", async () => {
     const user = userEvent.setup();
-    mockFetch.mockResolvedValueOnce(
-      createMockResponse(
-        JSON.stringify({ error: "Gemini API error (500)" }),
-        {
-          status: 502,
-          headers: { "content-type": "application/json" },
-        }
+    mockFetch
+      .mockResolvedValueOnce(
+        createMockResponse(
+          JSON.stringify({ error: "Gemini API error (500)" }),
+          {
+            status: 502,
+            headers: { "content-type": "application/json" },
+          }
+        )
       )
-    );
+      .mockResolvedValueOnce(
+        createMockResponse(JSON.stringify({ keywords: [] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      );
 
     render(<TailorPage />);
 
@@ -224,12 +239,19 @@ describe("TailorPage", () => {
 
   it("shows generic error when API returns non-JSON error", async () => {
     const user = userEvent.setup();
-    mockFetch.mockResolvedValueOnce(
-      createMockResponse("Internal Server Error", {
-        status: 500,
-        headers: { "content-type": "text/plain" },
-      })
-    );
+    mockFetch
+      .mockResolvedValueOnce(
+        createMockResponse("Internal Server Error", {
+          status: 500,
+          headers: { "content-type": "text/plain" },
+        })
+      )
+      .mockResolvedValueOnce(
+        createMockResponse(JSON.stringify({ keywords: [] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      );
 
     render(<TailorPage />);
 
@@ -254,7 +276,7 @@ describe("TailorPage", () => {
 
   it("shows network error when fetch throws", async () => {
     const user = userEvent.setup();
-    mockFetch.mockRejectedValueOnce(new Error("Network failure"));
+    mockFetch.mockRejectedValue(new Error("Network failure"));
 
     render(<TailorPage />);
 
@@ -277,12 +299,19 @@ describe("TailorPage", () => {
 
   it("shows error when API returns 200 but non-JSON response", async () => {
     const user = userEvent.setup();
-    mockFetch.mockResolvedValueOnce(
-      createMockResponse("", {
-        status: 200,
-        headers: { "content-type": "text/plain" },
-      })
-    );
+    mockFetch
+      .mockResolvedValueOnce(
+        createMockResponse("", {
+          status: 200,
+          headers: { "content-type": "text/plain" },
+        })
+      )
+      .mockResolvedValueOnce(
+        createMockResponse(JSON.stringify({ keywords: [] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      );
 
     render(<TailorPage />);
 
@@ -307,8 +336,8 @@ describe("TailorPage", () => {
 
   it("shows loading state during submission", async () => {
     const user = userEvent.setup();
-    // Make fetch hang
-    mockFetch.mockReturnValueOnce(new Promise(() => {}));
+    // Make both fetches hang
+    mockFetch.mockReturnValue(new Promise(() => {}));
 
     render(<TailorPage />);
 
@@ -329,7 +358,7 @@ describe("TailorPage", () => {
 
   it("disables textareas during loading", async () => {
     const user = userEvent.setup();
-    mockFetch.mockReturnValueOnce(new Promise(() => {}));
+    mockFetch.mockReturnValue(new Promise(() => {}));
 
     render(<TailorPage />);
 
@@ -477,12 +506,19 @@ describe("TailorPage", () => {
       sections: [{ title: "Summary", content: "Test" }],
       coverLetter: "Dear...",
     };
-    mockFetch.mockResolvedValueOnce(
-      createMockResponse(JSON.stringify(apiResponse), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      })
-    );
+    mockFetch
+      .mockResolvedValueOnce(
+        createMockResponse(JSON.stringify(apiResponse), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      )
+      .mockResolvedValueOnce(
+        createMockResponse(JSON.stringify({ keywords: [] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      );
 
     render(<TailorPage />);
 
@@ -507,12 +543,19 @@ describe("TailorPage", () => {
 
   it("sends correct request body to /api/tailor", async () => {
     const user = userEvent.setup();
-    mockFetch.mockResolvedValueOnce(
-      createMockResponse(
-        JSON.stringify({ sections: [{ title: "S", content: "C" }] }),
-        { status: 200, headers: { "content-type": "application/json" } }
+    mockFetch
+      .mockResolvedValueOnce(
+        createMockResponse(
+          JSON.stringify({ sections: [{ title: "S", content: "C" }] }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
       )
-    );
+      .mockResolvedValueOnce(
+        createMockResponse(JSON.stringify({ keywords: [] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      );
 
     render(<TailorPage />);
 
@@ -543,12 +586,19 @@ describe("TailorPage", () => {
 
   it("does not send provider or apiKey fields", async () => {
     const user = userEvent.setup();
-    mockFetch.mockResolvedValueOnce(
-      createMockResponse(
-        JSON.stringify({ sections: [{ title: "S", content: "C" }] }),
-        { status: 200, headers: { "content-type": "application/json" } }
+    mockFetch
+      .mockResolvedValueOnce(
+        createMockResponse(
+          JSON.stringify({ sections: [{ title: "S", content: "C" }] }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
       )
-    );
+      .mockResolvedValueOnce(
+        createMockResponse(JSON.stringify({ keywords: [] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      );
 
     render(<TailorPage />);
 

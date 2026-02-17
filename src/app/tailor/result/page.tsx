@@ -21,6 +21,9 @@ export default function ResultPage() {
   const [originalResume, setOriginalResume] = useState("");
   const [jobDescription, setJobDescription] = useState("");
   const [coverLetterExpanded, setCoverLetterExpanded] = useState(false);
+  const [llmKeywords, setLlmKeywords] = useState<string[] | undefined>(
+    undefined
+  );
   const [pdfGenerating, setPdfGenerating] = useState(false);
   const [pdfError, setPdfError] = useState("");
   const pdfGeneratingRef = useRef(false);
@@ -55,6 +58,20 @@ export default function ResultPage() {
       // Clean up sensitive data from sessionStorage after reading
       sessionStorage.removeItem("tailorOriginalResume");
       sessionStorage.removeItem("tailorJobDescription");
+
+      // Read LLM-extracted keywords if available
+      const storedKeywords = sessionStorage.getItem("tailorLlmKeywords");
+      if (storedKeywords) {
+        try {
+          const parsed2 = JSON.parse(storedKeywords);
+          if (Array.isArray(parsed2)) {
+            setLlmKeywords(parsed2);
+          }
+        } catch {
+          // Fall back to regex extraction
+        }
+        sessionStorage.removeItem("tailorLlmKeywords");
+      }
     } catch {
       router.replace("/tailor");
     }
@@ -181,6 +198,7 @@ export default function ResultPage() {
             originalResume={originalResume}
             tailoredResume={tailoredText}
             jobDescription={jobDescription}
+            llmKeywords={llmKeywords}
           />
         </div>
       )}

@@ -131,14 +131,22 @@ export default function TailorPage() {
         generateCoverLetter,
       };
 
-      const response = await fetch("/api/tailor", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestBody),
-      });
+      // Fire tailor and keyword extraction in parallel
+      const [tailorResponse, keywordsResponse] = await Promise.all([
+        fetch("/api/tailor", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(requestBody),
+        }),
+        fetch("/api/extract-keywords", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jobDescription }),
+        }).catch(() => null), // Keyword extraction is best-effort
+      ]);
 
-      const contentType = response.headers.get("content-type") || "";
-      const text = await response.text();
+      const contentType = tailorResponse.headers.get("content-type") || "";
+      const text = await tailorResponse.text();
 
       let data: Record<string, unknown> | null = null;
       if (contentType.includes("application/json") && text) {
@@ -149,7 +157,7 @@ export default function TailorPage() {
         }
       }
 
-      if (!response.ok) {
+      if (!tailorResponse.ok) {
         const errorMessage =
           (data && typeof data.error === "string" && data.error) ||
           "Something went wrong. Please try again.";
@@ -165,6 +173,22 @@ export default function TailorPage() {
       sessionStorage.setItem("tailorResult", JSON.stringify(data));
       sessionStorage.setItem("tailorOriginalResume", resume);
       sessionStorage.setItem("tailorJobDescription", jobDescription);
+
+      // Store LLM keywords if extraction succeeded
+      if (keywordsResponse?.ok) {
+        try {
+          const kwData = await keywordsResponse.json();
+          if (Array.isArray(kwData?.keywords)) {
+            sessionStorage.setItem(
+              "tailorLlmKeywords",
+              JSON.stringify(kwData.keywords)
+            );
+          }
+        } catch {
+          // Best-effort — regex fallback is fine
+        }
+      }
+
       router.push("/tailor/result");
     } catch {
       setApiError(

@@ -22,11 +22,14 @@ describe("MatchScore", () => {
     expect(screen.getByText("After")).toBeInTheDocument();
   });
 
-  it("renders percentage values", () => {
+  it("renders numeric score values (not percentages)", () => {
     render(<MatchScore {...defaultProps} />);
-    // Should show percentage numbers — exact values depend on keyword extraction
-    const percentages = screen.getAllByText(/%$/);
-    expect(percentages.length).toBeGreaterThanOrEqual(2);
+    // Should show raw numbers, not percentages
+    const percentages = screen.queryAllByText(/%$/);
+    expect(percentages.length).toBe(0);
+    // Verify numeric score values are actually rendered
+    const numericValues = screen.getAllByText(/^\d+$/);
+    expect(numericValues.length).toBeGreaterThanOrEqual(2);
   });
 
   it("shows keywords matched count", () => {
@@ -34,11 +37,22 @@ describe("MatchScore", () => {
     expect(screen.getByText(/keywords matched/)).toBeInTheDocument();
   });
 
-  it("shows missed keywords section when there are misses", () => {
+  it("does not show missed keywords in UI", () => {
     render(<MatchScore {...defaultProps} />);
-    expect(
-      screen.getByText(/keywords not in resume/)
-    ).toBeInTheDocument();
+    expect(screen.queryByText(/keywords not in resume/)).not.toBeInTheDocument();
+  });
+
+  it("logs missed keywords to console in development", () => {
+    const consoleSpy = jest.spyOn(console, "log").mockImplementation();
+    try {
+      render(<MatchScore {...defaultProps} />);
+      expect(consoleSpy).toHaveBeenCalledWith(
+        "[MatchScore] Unmatched keywords:",
+        expect.any(String)
+      );
+    } finally {
+      consoleSpy.mockRestore();
+    }
   });
 
   it("does not crash with empty inputs", () => {
@@ -61,9 +75,8 @@ describe("MatchScore", () => {
 
     render(<MatchScore {...propsWithGuaranteedImprovement} />);
 
-    // When the tailored resume matches more JD keywords than the original,
-    // the component should render a positive improvement like "+X%".
-    const improvement = screen.getByText(/^\+\d+%$/);
+    // Improvement shows as "+N" (raw number, not percentage)
+    const improvement = screen.getByText(/^\+\d+$/);
     expect(improvement).toBeInTheDocument();
   });
 
@@ -76,7 +89,12 @@ describe("MatchScore", () => {
 
     render(<MatchScore {...propsWithNoImprovement} />);
 
-    const improvement = screen.queryByText(/^\+\d+%$/);
+    const improvement = screen.queryByText(/^\+\d+$/);
     expect(improvement).not.toBeInTheDocument();
+  });
+
+  it("shows 'X of Y keywords matched' format", () => {
+    render(<MatchScore {...defaultProps} />);
+    expect(screen.getByText(/\d+ of \d+ keywords matched/)).toBeInTheDocument();
   });
 });

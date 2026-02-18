@@ -122,10 +122,14 @@ describe("ResultPage", () => {
     sessionStore.tailorResult = JSON.stringify(validResult);
     render(<ResultPage />);
 
+    // 5 inputs (fullName, email, phone, location, jobTitle) + 3 section textareas = 8 textboxes
     const textareas = screen.getAllByRole("textbox");
-    expect(textareas).toHaveLength(3);
-    expect(textareas[0]).toHaveValue("Experienced developer");
-    expect(textareas[1]).toHaveValue("TypeScript, React, Node.js");
+    expect(textareas).toHaveLength(8);
+
+    // Section textareas are the last 3
+    const sectionTextareas = textareas.slice(5);
+    expect(sectionTextareas[0]).toHaveValue("Experienced developer");
+    expect(sectionTextareas[1]).toHaveValue("TypeScript, React, Node.js");
   });
 
   it("updates preview when editing a section", async () => {
@@ -133,9 +137,11 @@ describe("ResultPage", () => {
     sessionStore.tailorResult = JSON.stringify(validResult);
     render(<ResultPage />);
 
+    // Section textareas start after 5 input fields
     const textareas = screen.getAllByRole("textbox");
-    await user.clear(textareas[0]);
-    await user.type(textareas[0], "Updated summary");
+    const summaryTextarea = textareas[5];
+    await user.clear(summaryTextarea);
+    await user.type(summaryTextarea, "Updated summary");
 
     // Updated text appears in both preview and textarea
     expect(screen.getAllByText("Updated summary").length).toBeGreaterThanOrEqual(1);
@@ -146,16 +152,19 @@ describe("ResultPage", () => {
     sessionStore.tailorResult = JSON.stringify(validResult);
     render(<ResultPage />);
 
+    // Section textareas start after 5 input fields
     const textareas = screen.getAllByRole("textbox");
-    await user.clear(textareas[0]);
-    await user.type(textareas[0], "New content");
+    const summaryTextarea = textareas[5];
+    await user.clear(summaryTextarea);
+    await user.type(summaryTextarea, "New content");
 
     await waitFor(() => {
       expect(sessionStorageMock.setItem).toHaveBeenCalled();
-      // Get the last setItem call value
+      // Find the tailorResult setItem call (not tailorPersonalInfo)
       const calls = sessionStorageMock.setItem.mock.calls;
-      const lastCall = calls[calls.length - 1];
-      const saved = JSON.parse(lastCall[1]);
+      const resultCall = calls.filter((c: string[]) => c[0] === "tailorResult").pop();
+      expect(resultCall).toBeDefined();
+      const saved = JSON.parse(resultCall![1]);
       expect(saved.sections[0].content).toBe("New content");
     });
   });
@@ -246,5 +255,72 @@ describe("ResultPage", () => {
     // and redirects to /tailor via the useEffect
     render(<ResultPage />);
     expect(mockReplace).toHaveBeenCalledWith("/tailor");
+  });
+
+  it("renders personal info in preview when provided", () => {
+    sessionStore.tailorResult = JSON.stringify(validResult);
+    sessionStore.tailorPersonalInfo = JSON.stringify({
+      fullName: "Jane Smith",
+      email: "jane@example.com",
+      phone: "555-1234",
+      location: "Vancouver, BC",
+    });
+    render(<ResultPage />);
+
+    expect(screen.getByText("Jane Smith")).toBeInTheDocument();
+    expect(screen.getByText(/jane@example\.com/)).toBeInTheDocument();
+    expect(screen.getByText(/555-1234/)).toBeInTheDocument();
+    expect(screen.getByText(/Vancouver, BC/)).toBeInTheDocument();
+  });
+
+  it("renders job title in preview when returned by API", () => {
+    sessionStore.tailorResult = JSON.stringify({
+      ...validResult,
+      jobTitle: "Senior Software Engineer",
+    });
+    sessionStore.tailorPersonalInfo = JSON.stringify({
+      fullName: "Jane Smith",
+      email: "",
+      phone: "",
+      location: "",
+    });
+    render(<ResultPage />);
+
+    expect(screen.getByText("Senior Software Engineer")).toBeInTheDocument();
+  });
+
+  it("renders editable personal info fields", () => {
+    sessionStore.tailorResult = JSON.stringify(validResult);
+    sessionStore.tailorPersonalInfo = JSON.stringify({
+      fullName: "Jane Smith",
+      email: "jane@example.com",
+      phone: "",
+      location: "",
+    });
+    render(<ResultPage />);
+
+    expect(screen.getByPlaceholderText("Full Name")).toHaveValue("Jane Smith");
+    expect(screen.getByPlaceholderText("Email")).toHaveValue("jane@example.com");
+  });
+
+  it("renders editable job title field", () => {
+    sessionStore.tailorResult = JSON.stringify({
+      ...validResult,
+      jobTitle: "Product Manager",
+    });
+    render(<ResultPage />);
+
+    expect(screen.getByPlaceholderText("e.g., Senior Software Engineer")).toHaveValue("Product Manager");
+  });
+
+  it("updates preview when editing personal info", async () => {
+    const user = userEvent.setup();
+    sessionStore.tailorResult = JSON.stringify(validResult);
+    render(<ResultPage />);
+
+    const nameInput = screen.getByPlaceholderText("Full Name");
+    await user.type(nameInput, "John Doe");
+
+    expect(screen.getByText("John Doe")).toBeInTheDocument();
   });
 });

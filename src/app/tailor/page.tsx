@@ -18,6 +18,12 @@ export default function TailorPage() {
   const [apiError, setApiError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Personal info fields
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [location, setLocation] = useState("");
+
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(true);
@@ -196,6 +202,10 @@ export default function TailorPage() {
         );
       }
 
+      // Store personal info for the result page
+      const personalInfo = { fullName, email, phone, location };
+      sessionStorage.setItem("tailorPersonalInfo", JSON.stringify(personalInfo));
+
       router.push("/tailor/result");
     } catch {
       setApiError(
@@ -219,6 +229,69 @@ export default function TailorPage() {
           Paste your master resume and the job description. We&apos;ll handle
           the rest.
         </p>
+      </div>
+
+      {/* Personal Info */}
+      <div className="mb-6 rounded-lg border border-border bg-white p-4 sm:mb-8 sm:p-6">
+        <h2 className="mb-3 text-sm font-medium">Personal Information</h2>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
+          <div>
+            <label htmlFor="fullName" className="mb-1 block text-xs text-muted">
+              Full Name
+            </label>
+            <input
+              id="fullName"
+              type="text"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              placeholder="John Doe"
+              disabled={isLoading}
+              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none disabled:opacity-50"
+            />
+          </div>
+          <div>
+            <label htmlFor="email" className="mb-1 block text-xs text-muted">
+              Email
+            </label>
+            <input
+              id="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="john@example.com"
+              disabled={isLoading}
+              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none disabled:opacity-50"
+            />
+          </div>
+          <div>
+            <label htmlFor="phone" className="mb-1 block text-xs text-muted">
+              Phone
+            </label>
+            <input
+              id="phone"
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="(555) 123-4567"
+              disabled={isLoading}
+              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none disabled:opacity-50"
+            />
+          </div>
+          <div>
+            <label htmlFor="location" className="mb-1 block text-xs text-muted">
+              Location
+            </label>
+            <input
+              id="location"
+              type="text"
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              placeholder="Vancouver, BC"
+              disabled={isLoading}
+              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none disabled:opacity-50"
+            />
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-6 sm:gap-8 md:grid-cols-2">

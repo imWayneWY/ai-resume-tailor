@@ -69,6 +69,7 @@ Every section of the resume must be actively tailored — not just the summary. 
 ## Output Format
 Respond with ONLY valid JSON, no markdown fences:
 {
+  "jobTitle": "...",
   "sections": [
     { "title": "Summary", "content": "..." },
     { "title": "Skills", "content": "..." },
@@ -77,6 +78,8 @@ Respond with ONLY valid JSON, no markdown fences:
   ],
   "coverLetter": "..." // only if requested
 }
+
+The "jobTitle" field should contain the exact job title extracted from the job description (e.g., "Senior Software Engineer", "Product Manager"). This will be used as the resume's target role heading.
 
 Include all relevant sections. The "content" field should use plain text with newlines for formatting. For experience entries, use this format:
 **Company Name** — Role Title (Date Range)
@@ -198,7 +201,7 @@ async function callAzureOpenAI(
 }
 
 function parseAndValidateResponse(text: string): NextResponse {
-  let parsed: { sections: { title: string; content: string }[]; coverLetter?: string };
+  let parsed: { jobTitle?: string; sections: { title: string; content: string }[]; coverLetter?: string };
   try {
     parsed = JSON.parse(text);
   } catch {
@@ -227,7 +230,12 @@ function parseAndValidateResponse(text: string): NextResponse {
     parsed.coverLetter !== undefined &&
     typeof parsed.coverLetter !== "string";
 
-  if (hasInvalidSection || hasInvalidCoverLetter) {
+  const hasInvalidJobTitle =
+    "jobTitle" in parsed &&
+    parsed.jobTitle !== undefined &&
+    typeof parsed.jobTitle !== "string";
+
+  if (hasInvalidSection || hasInvalidCoverLetter || hasInvalidJobTitle) {
     return NextResponse.json(
       { error: "AI returned invalid resume structure" },
       { status: 502 }

@@ -11,9 +11,18 @@ export interface PdfSection {
   content: string;
 }
 
+export interface PdfPersonalInfo {
+  fullName: string;
+  email: string;
+  phone: string;
+  location: string;
+}
+
 interface ResumePdfProps {
   sections: PdfSection[];
   coverLetter?: string;
+  personalInfo?: PdfPersonalInfo;
+  jobTitle?: string;
 }
 
 const styles = StyleSheet.create({
@@ -26,17 +35,25 @@ const styles = StyleSheet.create({
     color: "#1f2937",
     lineHeight: 1.5,
   },
-  // --- Resume header (first section treated as name/header) ---
-  headerTitle: {
-    fontSize: 22,
+  // --- Resume header (personal info) ---
+  headerName: {
+    fontSize: 24,
     fontFamily: "Helvetica-Bold",
     color: "#111827",
+    textAlign: "center" as const,
     marginBottom: 2,
   },
-  headerContent: {
+  headerJobTitle: {
+    fontSize: 11,
+    color: "#4b5563",
+    textAlign: "center" as const,
+    marginBottom: 2,
+  },
+  headerContact: {
     fontSize: 10,
     color: "#4b5563",
-    lineHeight: 1.6,
+    textAlign: "center" as const,
+    marginBottom: 2,
   },
   headerDivider: {
     borderBottomWidth: 1.5,
@@ -90,26 +107,36 @@ function renderContent(content: string) {
   ));
 }
 
-export default function ResumePdf({ sections, coverLetter }: ResumePdfProps) {
-  const [header, ...rest] = sections;
+export default function ResumePdf({ sections, coverLetter, personalInfo, jobTitle }: ResumePdfProps) {
+  const hasPersonalInfo = personalInfo && personalInfo.fullName.trim();
+  const contactParts = personalInfo
+    ? [personalInfo.email, personalInfo.phone, personalInfo.location].filter(
+        (p) => p && p.trim()
+      )
+    : [];
 
   return (
     <Document>
       {/* Resume page */}
       <Page size="A4" style={styles.page}>
-        {/* Header / name section */}
-        {header && (
+        {/* Personal info header */}
+        {hasPersonalInfo && (
           <View>
-            <Text style={styles.headerTitle}>{header.title}</Text>
-            <View style={styles.headerContent}>
-              {renderContent(header.content)}
-            </View>
+            <Text style={styles.headerName}>{personalInfo.fullName}</Text>
+            {jobTitle && jobTitle.trim() && (
+              <Text style={styles.headerJobTitle}>{jobTitle}</Text>
+            )}
+            {contactParts.length > 0 && (
+              <Text style={styles.headerContact}>
+                {contactParts.join(" • ")}
+              </Text>
+            )}
             <View style={styles.headerDivider} />
           </View>
         )}
 
         {/* Body sections */}
-        {rest.map((section, i) => (
+        {sections.map((section, i) => (
           <View key={i} style={styles.section}>
             <Text style={styles.sectionTitle}>{section.title}</Text>
             <View style={styles.sectionContent}>

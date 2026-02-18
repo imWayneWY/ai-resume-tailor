@@ -9,9 +9,17 @@ interface Section {
   content: string;
 }
 
+interface PersonalInfo {
+  fullName: string;
+  email: string;
+  phone: string;
+  location: string;
+}
+
 interface TailorResult {
   sections: Section[];
   coverLetter?: string;
+  jobTitle?: string;
 }
 
 export default function ResultPage() {
@@ -24,6 +32,13 @@ export default function ResultPage() {
   const [llmKeywords, setLlmKeywords] = useState<string[] | undefined>(
     undefined
   );
+  const [personalInfo, setPersonalInfo] = useState<PersonalInfo>({
+    fullName: "",
+    email: "",
+    phone: "",
+    location: "",
+  });
+  const [jobTitle, setJobTitle] = useState("");
   const [pdfGenerating, setPdfGenerating] = useState(false);
   const [pdfError, setPdfError] = useState("");
   const pdfGeneratingRef = useRef(false);
@@ -54,6 +69,30 @@ export default function ResultPage() {
       setEditableSections(parsed.sections.map((s) => ({ ...s })));
       setOriginalResume(sessionStorage.getItem("tailorOriginalResume") || "");
       setJobDescription(sessionStorage.getItem("tailorJobDescription") || "");
+
+      // Load job title from API response
+      if (typeof parsed.jobTitle === "string" && parsed.jobTitle.trim()) {
+        setJobTitle(parsed.jobTitle.trim());
+      }
+
+      // Load personal info
+      const storedPersonalInfo = sessionStorage.getItem("tailorPersonalInfo");
+      if (storedPersonalInfo) {
+        try {
+          const parsedInfo = JSON.parse(storedPersonalInfo);
+          if (parsedInfo && typeof parsedInfo === "object") {
+            setPersonalInfo({
+              fullName: parsedInfo.fullName || "",
+              email: parsedInfo.email || "",
+              phone: parsedInfo.phone || "",
+              location: parsedInfo.location || "",
+            });
+          }
+        } catch {
+          // ignore
+        }
+        sessionStorage.removeItem("tailorPersonalInfo");
+      }
 
       // Clean up sensitive data from sessionStorage after reading
       sessionStorage.removeItem("tailorOriginalResume");
@@ -115,6 +154,8 @@ export default function ResultPage() {
         <ResumePdf
           sections={editableSections}
           coverLetter={result?.coverLetter}
+          personalInfo={personalInfo}
+          jobTitle={jobTitle}
         />
       ).toBlob();
 
@@ -211,6 +252,24 @@ export default function ResultPage() {
             Preview
           </h2>
           <div className="rounded-lg border border-border bg-white p-6 shadow-sm sm:p-8">
+            {/* Personal info header */}
+            {personalInfo.fullName && (
+              <div className="mb-4 text-center">
+                <h2 className="text-2xl font-bold tracking-tight">
+                  {personalInfo.fullName}
+                </h2>
+                {jobTitle && (
+                  <p className="mt-1 text-sm text-muted">{jobTitle}</p>
+                )}
+                <p className="mt-1 text-sm text-muted">
+                  {[personalInfo.email, personalInfo.phone, personalInfo.location]
+                    .filter(Boolean)
+                    .join(" • ")}
+                </p>
+                <div className="mt-3 border-b border-border" />
+              </div>
+            )}
+
             {editableSections.map((section, i) => (
               <div key={i} className={i > 0 ? "mt-6" : ""}>
                 <h3 className="mb-3 border-b border-border pb-1 text-lg font-semibold tracking-tight">
@@ -230,6 +289,66 @@ export default function ResultPage() {
             Edit Sections
           </h2>
           <div className="flex flex-col gap-4">
+            {/* Personal info editing */}
+            <div className="rounded-lg border border-border bg-white p-4">
+              <label className="mb-2 block text-sm font-medium">
+                Personal Information
+              </label>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <input
+                  type="text"
+                  value={personalInfo.fullName}
+                  onChange={(e) =>
+                    setPersonalInfo((prev) => ({ ...prev, fullName: e.target.value }))
+                  }
+                  placeholder="Full Name"
+                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none"
+                />
+                <input
+                  type="email"
+                  value={personalInfo.email}
+                  onChange={(e) =>
+                    setPersonalInfo((prev) => ({ ...prev, email: e.target.value }))
+                  }
+                  placeholder="Email"
+                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none"
+                />
+                <input
+                  type="tel"
+                  value={personalInfo.phone}
+                  onChange={(e) =>
+                    setPersonalInfo((prev) => ({ ...prev, phone: e.target.value }))
+                  }
+                  placeholder="Phone"
+                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none"
+                />
+                <input
+                  type="text"
+                  value={personalInfo.location}
+                  onChange={(e) =>
+                    setPersonalInfo((prev) => ({ ...prev, location: e.target.value }))
+                  }
+                  placeholder="Location"
+                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none"
+                />
+              </div>
+            </div>
+
+            {/* Job title editing */}
+            <div className="rounded-lg border border-border bg-white p-4">
+              <label htmlFor="jobTitle" className="mb-2 block text-sm font-medium">
+                Target Job Title
+              </label>
+              <input
+                id="jobTitle"
+                type="text"
+                value={jobTitle}
+                onChange={(e) => setJobTitle(e.target.value)}
+                placeholder="e.g., Senior Software Engineer"
+                className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none"
+              />
+            </div>
+
             {editableSections.map((section, i) => {
               const textareaId = `section-${i}`;
               const rows = Math.max(4, section.content.split("\n").length + 1);

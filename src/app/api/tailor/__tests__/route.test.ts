@@ -592,4 +592,73 @@ describe("POST /api/tailor", () => {
     );
     expect(res.status).toBe(400);
   });
+
+  // --- jobTitle in response ---
+  it("returns jobTitle when present in AI response", async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  jobTitle: "Senior Software Engineer",
+                  sections: [
+                    { title: "Summary", content: "Experienced developer" },
+                  ],
+                }),
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+
+    const res = await POST(makeRequest(validBody));
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.jobTitle).toBe("Senior Software Engineer");
+  });
+
+  it("returns 502 when jobTitle is not a string", async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  jobTitle: 123,
+                  sections: [
+                    { title: "Summary", content: "Experienced developer" },
+                  ],
+                }),
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+
+    const res = await POST(makeRequest(validBody));
+    expect(res.status).toBe(502);
+    const json = await res.json();
+    expect(json.error).toMatch(/invalid resume structure/i);
+  });
+
+  it("succeeds when jobTitle is absent from response", async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify(validAzureResponse), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    const res = await POST(makeRequest(validBody));
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.jobTitle).toBeUndefined();
+  });
 });

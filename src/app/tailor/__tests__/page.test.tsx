@@ -714,4 +714,56 @@ describe("TailorPage", () => {
       expect(mockPush).toHaveBeenCalledWith("/tailor/result");
     });
   });
+
+  it("renders personal info input fields", () => {
+    render(<TailorPage />);
+
+    expect(screen.getByPlaceholderText("John Doe")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("john@example.com")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("(555) 123-4567")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Vancouver, BC")).toBeInTheDocument();
+  });
+
+  it("stores personal info in sessionStorage on submit", async () => {
+    const user = userEvent.setup();
+    const apiResponse = {
+      sections: [{ title: "Summary", content: "Test" }],
+    };
+    mockFetch
+      .mockResolvedValueOnce(
+        createMockResponse(JSON.stringify({ keywords: [] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      )
+      .mockResolvedValueOnce(
+        createMockResponse(JSON.stringify(apiResponse), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      );
+
+    render(<TailorPage />);
+
+    await user.type(screen.getByPlaceholderText("John Doe"), "Jane Smith");
+    await user.type(screen.getByPlaceholderText("john@example.com"), "jane@test.com");
+    await user.type(
+      screen.getByPlaceholderText(/paste your full resume/i),
+      "My resume"
+    );
+    await user.type(
+      screen.getByPlaceholderText(/paste the job description/i),
+      "Job desc"
+    );
+    await user.click(
+      screen.getByRole("button", { name: /tailor resume/i })
+    );
+
+    await waitFor(() => {
+      expect(sessionStorageMock.setItem).toHaveBeenCalledWith(
+        "tailorPersonalInfo",
+        expect.stringContaining("Jane Smith")
+      );
+    });
+  });
 });

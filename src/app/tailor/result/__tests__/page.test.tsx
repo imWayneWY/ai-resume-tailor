@@ -122,12 +122,12 @@ describe("ResultPage", () => {
     sessionStore.tailorResult = JSON.stringify(validResult);
     render(<ResultPage />);
 
-    // 5 inputs (fullName, email, phone, location, jobTitle) + 3 section textareas = 8 textboxes
+    // 6 inputs (fullName, email, phone, location, linkedin, jobTitle) + 3 section textareas = 9 textboxes
     const textareas = screen.getAllByRole("textbox");
-    expect(textareas).toHaveLength(8);
+    expect(textareas).toHaveLength(9);
 
     // Section textareas are the last 3
-    const sectionTextareas = textareas.slice(5);
+    const sectionTextareas = textareas.slice(6);
     expect(sectionTextareas[0]).toHaveValue("Experienced developer");
     expect(sectionTextareas[1]).toHaveValue("TypeScript, React, Node.js");
   });
@@ -137,9 +137,9 @@ describe("ResultPage", () => {
     sessionStore.tailorResult = JSON.stringify(validResult);
     render(<ResultPage />);
 
-    // Section textareas start after 5 input fields
+    // Section textareas start after 6 input fields
     const textareas = screen.getAllByRole("textbox");
-    const summaryTextarea = textareas[5];
+    const summaryTextarea = textareas[6];
     await user.clear(summaryTextarea);
     await user.type(summaryTextarea, "Updated summary");
 
@@ -152,9 +152,9 @@ describe("ResultPage", () => {
     sessionStore.tailorResult = JSON.stringify(validResult);
     render(<ResultPage />);
 
-    // Section textareas start after 5 input fields
+    // Section textareas start after 6 input fields
     const textareas = screen.getAllByRole("textbox");
-    const summaryTextarea = textareas[5];
+    const summaryTextarea = textareas[6];
     await user.clear(summaryTextarea);
     await user.type(summaryTextarea, "New content");
 
@@ -322,5 +322,33 @@ describe("ResultPage", () => {
     await user.type(nameInput, "John Doe");
 
     expect(screen.getByText("John Doe")).toBeInTheDocument();
+  });
+
+  it("renders LinkedIn field in edit panel", () => {
+    sessionStore.tailorResult = JSON.stringify(validResult);
+    sessionStore.tailorPersonalInfo = JSON.stringify({
+      fullName: "Jane Smith",
+      email: "",
+      phone: "",
+      location: "",
+      linkedin: "linkedin.com/in/janesmith",
+    });
+    render(<ResultPage />);
+
+    expect(screen.getByPlaceholderText("linkedin.com/in/johndoe")).toHaveValue("linkedin.com/in/janesmith");
+  });
+
+  it("shows LinkedIn in preview contact line", () => {
+    sessionStore.tailorResult = JSON.stringify(validResult);
+    sessionStore.tailorPersonalInfo = JSON.stringify({
+      fullName: "Jane Smith",
+      email: "jane@test.com",
+      phone: "",
+      location: "",
+      linkedin: "linkedin.com/in/janesmith",
+    });
+    render(<ResultPage />);
+
+    expect(screen.getByText(/linkedin\.com\/in\/janesmith/)).toBeInTheDocument();
   });
 });

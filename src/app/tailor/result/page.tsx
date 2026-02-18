@@ -14,6 +14,7 @@ interface PersonalInfo {
   email: string;
   phone: string;
   location: string;
+  linkedin: string;
 }
 
 interface TailorResult {
@@ -37,6 +38,7 @@ export default function ResultPage() {
     email: "",
     phone: "",
     location: "",
+    linkedin: "",
   });
   const [jobTitle, setJobTitle] = useState("");
   const [pdfGenerating, setPdfGenerating] = useState(false);
@@ -86,6 +88,7 @@ export default function ResultPage() {
               email: parsedInfo.email || "",
               phone: parsedInfo.phone || "",
               location: parsedInfo.location || "",
+              linkedin: parsedInfo.linkedin || "",
             });
           }
         } catch {
@@ -256,7 +259,7 @@ export default function ResultPage() {
           <div className="rounded-lg border border-border bg-white p-6 shadow-sm sm:p-8">
             {/* Personal info header */}
             {(() => {
-              const contactParts = [personalInfo.email, personalInfo.phone, personalInfo.location].filter(Boolean);
+              const contactParts = [personalInfo.email, personalInfo.phone, personalInfo.location, personalInfo.linkedin].filter(Boolean);
               const hasAnyHeader = personalInfo.fullName || jobTitle || contactParts.length > 0;
               if (!hasAnyHeader) return null;
               return (
@@ -353,6 +356,19 @@ export default function ResultPage() {
                       setPersonalInfo((prev) => ({ ...prev, location: e.target.value }))
                     }
                     placeholder="Location"
+                    className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label htmlFor="edit-linkedin" className="sr-only">LinkedIn</label>
+                  <input
+                    id="edit-linkedin"
+                    type="text"
+                    value={personalInfo.linkedin}
+                    onChange={(e) =>
+                      setPersonalInfo((prev) => ({ ...prev, linkedin: e.target.value }))
+                    }
+                    placeholder="linkedin.com/in/johndoe"
                     className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none"
                   />
                 </div>

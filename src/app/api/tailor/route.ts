@@ -87,6 +87,7 @@ interface TailorRequest {
   resume: string;
   jobDescription: string;
   generateCoverLetter: boolean;
+  targetKeywords?: string[];
 }
 
 function validateRequest(
@@ -94,20 +95,32 @@ function validateRequest(
 ): body is TailorRequest {
   if (!body || typeof body !== "object") return false;
   const b = body as Record<string, unknown>;
-  return (
+  const baseValid =
     typeof b.resume === "string" &&
     b.resume.trim().length > 0 &&
     typeof b.jobDescription === "string" &&
     b.jobDescription.trim().length > 0 &&
-    typeof b.generateCoverLetter === "boolean"
-  );
+    typeof b.generateCoverLetter === "boolean";
+  if (!baseValid) return false;
+
+  // targetKeywords is optional; if present, must be an array of strings
+  if ("targetKeywords" in b && b.targetKeywords !== undefined) {
+    if (!Array.isArray(b.targetKeywords)) return false;
+    if (b.targetKeywords.some((k: unknown) => typeof k !== "string")) return false;
+  }
+  return true;
 }
 
 function buildUserPrompt(
   resume: string,
   jobDescription: string,
-  generateCoverLetter: boolean
+  generateCoverLetter: boolean,
+  targetKeywords?: string[]
 ): string {
+  const keywordSection = targetKeywords && targetKeywords.length > 0
+    ? `\n\nThe following ATS keywords were extracted from this job description. You MUST try to naturally incorporate as many of these as possible into the tailored resume (summary, skills, and experience bullets). Only use a keyword if the candidate's experience genuinely supports it:\n${targetKeywords.join(", ")}\n`
+    : "";
+
   return `Here is the candidate's master resume:
 
 ---
@@ -119,7 +132,7 @@ Here is the job description to tailor for:
 ---
 ${jobDescription}
 ---
-
+${keywordSection}
 ${generateCoverLetter ? "Please also generate a cover letter that addresses any skill gaps and highlights the candidate's strongest relevant qualifications." : "Do NOT include a coverLetter field in the output."}
 
 Respond with ONLY the JSON object, no markdown fences or extra text.`;
@@ -270,8 +283,8 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { resume, jobDescription, generateCoverLetter } = body;
-  const userPrompt = buildUserPrompt(resume, jobDescription, generateCoverLetter);
+  const { resume, jobDescription, generateCoverLetter, targetKeywords } = body;
+  const userPrompt = buildUserPrompt(resume, jobDescription, generateCoverLetter, targetKeywords);
 
   try {
     return await callAzureOpenAI(endpoint, apiKey, deployment, userPrompt);

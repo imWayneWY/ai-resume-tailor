@@ -13,25 +13,22 @@ interface MatchScoreProps {
 
 function ScoreCircle({
   score,
-  total,
   label,
   size = 80,
 }: {
   score: number;
-  total: number;
   label: string;
   size?: number;
 }) {
   const strokeWidth = 6;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
-  const percentage = total > 0 ? (score / total) * 100 : 0;
-  const offset = circumference - (percentage / 100) * circumference;
+  const offset = circumference - (score / 100) * circumference;
 
   const color =
-    percentage >= 60
+    score >= 60
       ? "text-green-500"
-      : percentage >= 35
+      : score >= 35
         ? "text-yellow-500"
         : "text-red-500";
 
@@ -103,6 +100,12 @@ export default function MatchScore({
 
   const usingLlm = !!(llmKeywords && llmKeywords.length > 0);
 
+  // Compute 0-100 scores (no % symbol — just numbers)
+  const totalKw = jdKeywords.size;
+  const beforeScoreNum = totalKw > 0 ? Math.round((beforeScore.matchCount / totalKw) * 100) : 0;
+  const afterScoreNum = totalKw > 0 ? Math.round((afterScore.matchCount / totalKw) * 100) : 0;
+  const scoreImprovement = afterScoreNum - beforeScoreNum;
+
   // Log keywords to browser console for inspection (use console.debug to reduce noise)
   useEffect(() => {
     console.debug(
@@ -131,8 +134,7 @@ export default function MatchScore({
       {/* Score circles */}
       <div className="flex items-center justify-center gap-6 sm:gap-8">
         <ScoreCircle
-          score={beforeScore.matchCount}
-          total={beforeScore.totalKeywords}
+          score={beforeScoreNum}
           label="Before"
         />
 
@@ -152,16 +154,15 @@ export default function MatchScore({
               d="M13 7l5 5m0 0l-5 5m5-5H6"
             />
           </svg>
-          {improvement > 0 && (
+          {scoreImprovement > 0 && (
             <span className="text-xs font-semibold text-green-600">
-              +{improvement}
+              +{scoreImprovement}
             </span>
           )}
         </div>
 
         <ScoreCircle
-          score={afterScore.matchCount}
-          total={afterScore.totalKeywords}
+          score={afterScoreNum}
           label="After"
         />
       </div>

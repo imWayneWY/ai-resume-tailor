@@ -12,10 +12,10 @@ export interface PdfSection {
 }
 
 export interface PdfPersonalInfo {
-  fullName: string;
-  email: string;
-  phone: string;
-  location: string;
+  fullName?: string;
+  email?: string;
+  phone?: string;
+  location?: string;
 }
 
 interface ResumePdfProps {
@@ -108,21 +108,26 @@ function renderContent(content: string) {
 }
 
 export default function ResumePdf({ sections, coverLetter, personalInfo, jobTitle }: ResumePdfProps) {
-  const hasPersonalInfo = personalInfo && personalInfo.fullName.trim();
   const contactParts = personalInfo
     ? [personalInfo.email, personalInfo.phone, personalInfo.location].filter(
         (p) => p && p.trim()
       )
     : [];
+  const hasAnyHeader =
+    (personalInfo?.fullName?.trim()) ||
+    (jobTitle?.trim()) ||
+    contactParts.length > 0;
 
   return (
     <Document>
       {/* Resume page */}
       <Page size="A4" style={styles.page}>
         {/* Personal info header */}
-        {hasPersonalInfo && (
+        {hasAnyHeader && (
           <View>
-            <Text style={styles.headerName}>{personalInfo.fullName}</Text>
+            {personalInfo?.fullName?.trim() && (
+              <Text style={styles.headerName}>{personalInfo.fullName}</Text>
+            )}
             {jobTitle && jobTitle.trim() && (
               <Text style={styles.headerJobTitle}>{jobTitle}</Text>
             )}

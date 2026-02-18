@@ -132,11 +132,13 @@ export default function ResultPage() {
     try {
       const current: TailorResult = JSON.parse(stored);
       current.sections = editableSections;
+      current.jobTitle = jobTitle;
       sessionStorage.setItem("tailorResult", JSON.stringify(current));
+      sessionStorage.setItem("tailorPersonalInfo", JSON.stringify(personalInfo));
     } catch {
       // ignore
     }
-  }, [editableSections]);
+  }, [editableSections, jobTitle, personalInfo]);
 
   const handleDownloadPdf = async () => {
     if (pdfGeneratingRef.current) return;
@@ -253,22 +255,29 @@ export default function ResultPage() {
           </h2>
           <div className="rounded-lg border border-border bg-white p-6 shadow-sm sm:p-8">
             {/* Personal info header */}
-            {personalInfo.fullName && (
-              <div className="mb-4 text-center">
-                <h2 className="text-2xl font-bold tracking-tight">
-                  {personalInfo.fullName}
-                </h2>
-                {jobTitle && (
-                  <p className="mt-1 text-sm text-muted">{jobTitle}</p>
-                )}
-                <p className="mt-1 text-sm text-muted">
-                  {[personalInfo.email, personalInfo.phone, personalInfo.location]
-                    .filter(Boolean)
-                    .join(" • ")}
-                </p>
-                <div className="mt-3 border-b border-border" />
-              </div>
-            )}
+            {(() => {
+              const contactParts = [personalInfo.email, personalInfo.phone, personalInfo.location].filter(Boolean);
+              const hasAnyHeader = personalInfo.fullName || jobTitle || contactParts.length > 0;
+              if (!hasAnyHeader) return null;
+              return (
+                <div className="mb-4 text-center">
+                  {personalInfo.fullName && (
+                    <h2 className="text-2xl font-bold tracking-tight">
+                      {personalInfo.fullName}
+                    </h2>
+                  )}
+                  {jobTitle && (
+                    <p className="mt-1 text-sm text-muted">{jobTitle}</p>
+                  )}
+                  {contactParts.length > 0 && (
+                    <p className="mt-1 text-sm text-muted">
+                      {contactParts.join(" • ")}
+                    </p>
+                  )}
+                  <div className="mt-3 border-b border-border" />
+                </div>
+              );
+            })()}
 
             {editableSections.map((section, i) => (
               <div key={i} className={i > 0 ? "mt-6" : ""}>
@@ -295,42 +304,58 @@ export default function ResultPage() {
                 Personal Information
               </label>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <input
-                  type="text"
-                  value={personalInfo.fullName}
-                  onChange={(e) =>
-                    setPersonalInfo((prev) => ({ ...prev, fullName: e.target.value }))
-                  }
-                  placeholder="Full Name"
-                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none"
-                />
-                <input
-                  type="email"
-                  value={personalInfo.email}
-                  onChange={(e) =>
-                    setPersonalInfo((prev) => ({ ...prev, email: e.target.value }))
-                  }
-                  placeholder="Email"
-                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none"
-                />
-                <input
-                  type="tel"
-                  value={personalInfo.phone}
-                  onChange={(e) =>
-                    setPersonalInfo((prev) => ({ ...prev, phone: e.target.value }))
-                  }
-                  placeholder="Phone"
-                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none"
-                />
-                <input
-                  type="text"
-                  value={personalInfo.location}
-                  onChange={(e) =>
-                    setPersonalInfo((prev) => ({ ...prev, location: e.target.value }))
-                  }
-                  placeholder="Location"
-                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none"
-                />
+                <div>
+                  <label htmlFor="edit-fullName" className="sr-only">Full Name</label>
+                  <input
+                    id="edit-fullName"
+                    type="text"
+                    value={personalInfo.fullName}
+                    onChange={(e) =>
+                      setPersonalInfo((prev) => ({ ...prev, fullName: e.target.value }))
+                    }
+                    placeholder="Full Name"
+                    className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="edit-email" className="sr-only">Email</label>
+                  <input
+                    id="edit-email"
+                    type="email"
+                    value={personalInfo.email}
+                    onChange={(e) =>
+                      setPersonalInfo((prev) => ({ ...prev, email: e.target.value }))
+                    }
+                    placeholder="Email"
+                    className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="edit-phone" className="sr-only">Phone</label>
+                  <input
+                    id="edit-phone"
+                    type="tel"
+                    value={personalInfo.phone}
+                    onChange={(e) =>
+                      setPersonalInfo((prev) => ({ ...prev, phone: e.target.value }))
+                    }
+                    placeholder="Phone"
+                    className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="edit-location" className="sr-only">Location</label>
+                  <input
+                    id="edit-location"
+                    type="text"
+                    value={personalInfo.location}
+                    onChange={(e) =>
+                      setPersonalInfo((prev) => ({ ...prev, location: e.target.value }))
+                    }
+                    placeholder="Location"
+                    className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none"
+                  />
+                </div>
               </div>
             </div>
 

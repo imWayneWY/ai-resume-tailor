@@ -160,10 +160,11 @@ describe("ResultPage", () => {
 
     await waitFor(() => {
       expect(sessionStorageMock.setItem).toHaveBeenCalled();
-      // Get the last setItem call value
+      // Find the tailorResult setItem call (not tailorPersonalInfo)
       const calls = sessionStorageMock.setItem.mock.calls;
-      const lastCall = calls[calls.length - 1];
-      const saved = JSON.parse(lastCall[1]);
+      const resultCall = calls.filter((c: string[]) => c[0] === "tailorResult").pop();
+      expect(resultCall).toBeDefined();
+      const saved = JSON.parse(resultCall![1]);
       expect(saved.sections[0].content).toBe("New content");
     });
   });

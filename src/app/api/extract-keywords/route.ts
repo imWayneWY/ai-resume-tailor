@@ -27,11 +27,11 @@ const SYSTEM_PROMPT = `You are an expert ATS (Applicant Tracking System) keyword
 Return a JSON object with a single "keywords" array containing the extracted keywords/phrases in lowercase.
 Keep multi-word phrases together (e.g., "state management" not "state" + "management").
 Extract at least 35 keywords. Be thorough — include variations when they exist (e.g., both "React" and "React.js", both "CI/CD" and "continuous integration").
-Aim for 35-60 keywords. Make sure to cover ALL categories above: technical skills, tools, technologies, methodologies, soft skills, certifications, and domain terms. Do not skip any category.
+Aim for 35-60 keywords. Cover as many of the categories above as clearly appear in the job description: technical skills, tools, technologies, methodologies, soft skills, certifications, and domain terms. Do NOT invent keywords for categories that are not supported by the text.
 Sort alphabetically.
 
 Example output:
-{"keywords": ["agile", "api design", "aws", "ci/cd", "collaborative", "continuous integration", "cross-functional", "distributed systems", "docker", "graphql", "kubernetes", "mentoring", "microservices", "node.js", "postgresql", "react", "react.js", "redis", "rest api", "scrum", "stakeholder management", "system design", "typescript"]}`;
+{"keywords": ["agile", "api design", "aws", "ci/cd", "cloud infrastructure", "collaborative", "continuous integration", "cross-functional", "distributed systems", "docker", "event-driven architecture", "git", "graphql", "javascript", "kubernetes", "linux", "mentoring", "microservices", "monitoring", "node.js", "nosql", "performance optimization", "postgresql", "python", "react", "react.js", "redis", "rest api", "scalability", "scrum", "security best practices", "stakeholder management", "system design", "terraform", "typescript", "unit testing"]}`;
 
 function buildAzureUrl(endpoint: string, deployment: string): string {
   const base = endpoint.replace(/\/+$/, "");

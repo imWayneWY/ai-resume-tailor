@@ -513,4 +513,83 @@ describe("POST /api/tailor", () => {
     expect(json.coverLetter).toContain("help");
     expect(json.coverLetter).toContain("change");
   });
+
+  // --- targetKeywords support ---
+  it("includes target keywords in user prompt when provided", async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify(validAzureResponse), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    const bodyWithKeywords = {
+      ...validBody,
+      targetKeywords: ["react", "typescript", "ci/cd"],
+    };
+    await POST(makeRequest(bodyWithKeywords));
+
+    const fetchBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+    const userText = fetchBody.messages[1].content;
+    expect(userText).toContain("react");
+    expect(userText).toContain("typescript");
+    expect(userText).toContain("ci/cd");
+    expect(userText).toMatch(/ATS keywords/i);
+  });
+
+  it("does not include keyword section when targetKeywords is not provided", async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify(validAzureResponse), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    await POST(makeRequest(validBody));
+
+    const fetchBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+    const userText = fetchBody.messages[1].content;
+    expect(userText).not.toMatch(/ATS keywords/i);
+  });
+
+  it("does not include keyword section when targetKeywords is empty", async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify(validAzureResponse), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    await POST(makeRequest({ ...validBody, targetKeywords: [] }));
+
+    const fetchBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+    const userText = fetchBody.messages[1].content;
+    expect(userText).not.toMatch(/ATS keywords/i);
+  });
+
+  it("accepts request without targetKeywords (backwards compatible)", async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify(validAzureResponse), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    const res = await POST(makeRequest(validBody));
+    expect(res.status).toBe(200);
+  });
+
+  it("returns 400 when targetKeywords is not an array", async () => {
+    const res = await POST(
+      makeRequest({ ...validBody, targetKeywords: "react" })
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when targetKeywords contains non-strings", async () => {
+    const res = await POST(
+      makeRequest({ ...validBody, targetKeywords: ["react", 123] })
+    );
+    expect(res.status).toBe(400);
+  });
 });

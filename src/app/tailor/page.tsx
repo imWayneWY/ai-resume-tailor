@@ -125,25 +125,39 @@ export default function TailorPage() {
     setIsLoading(true);
 
     try {
-      const requestBody = {
+      // Step 1: Extract keywords first (so we can pass them to the tailor)
+      let extractedKeywords: string[] | null = null;
+      try {
+        const kwResponse = await fetch("/api/extract-keywords", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jobDescription }),
+        });
+        if (kwResponse.ok) {
+          const kwData = await kwResponse.json();
+          if (Array.isArray(kwData?.keywords) && kwData.keywords.length > 0) {
+            extractedKeywords = kwData.keywords;
+          }
+        }
+      } catch {
+        // Keyword extraction is best-effort — tailor will still work without it
+      }
+
+      // Step 2: Tailor resume, passing extracted keywords if available
+      const requestBody: Record<string, unknown> = {
         resume,
         jobDescription,
         generateCoverLetter,
       };
+      if (extractedKeywords) {
+        requestBody.targetKeywords = extractedKeywords;
+      }
 
-      // Fire tailor and keyword extraction in parallel
-      const [tailorResponse, keywordsResponse] = await Promise.all([
-        fetch("/api/tailor", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(requestBody),
-        }),
-        fetch("/api/extract-keywords", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ jobDescription }),
-        }).catch(() => null), // Keyword extraction is best-effort
-      ]);
+      const tailorResponse = await fetch("/api/tailor", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody),
+      });
 
       const contentType = tailorResponse.headers.get("content-type") || "";
       const text = await tailorResponse.text();
@@ -174,19 +188,12 @@ export default function TailorPage() {
       sessionStorage.setItem("tailorOriginalResume", resume);
       sessionStorage.setItem("tailorJobDescription", jobDescription);
 
-      // Store LLM keywords if extraction succeeded
-      if (keywordsResponse?.ok) {
-        try {
-          const kwData = await keywordsResponse.json();
-          if (Array.isArray(kwData?.keywords)) {
-            sessionStorage.setItem(
-              "tailorLlmKeywords",
-              JSON.stringify(kwData.keywords)
-            );
-          }
-        } catch {
-          // Best-effort — regex fallback is fine
-        }
+      // Store LLM keywords for match score display
+      if (extractedKeywords) {
+        sessionStorage.setItem(
+          "tailorLlmKeywords",
+          JSON.stringify(extractedKeywords)
+        );
       }
 
       router.push("/tailor/result");

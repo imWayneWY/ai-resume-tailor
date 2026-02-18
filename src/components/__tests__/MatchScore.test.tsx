@@ -22,12 +22,12 @@ describe("MatchScore", () => {
     expect(screen.getByText("After")).toBeInTheDocument();
   });
 
-  it("renders numeric score values (not percentages)", () => {
+  it("renders 0-100 score values (not raw counts or percentages)", () => {
     render(<MatchScore {...defaultProps} />);
-    // Should show raw numbers, not percentages
+    // Should show numbers without % symbol
     const percentages = screen.queryAllByText(/%$/);
     expect(percentages.length).toBe(0);
-    // Verify numeric score values are actually rendered
+    // Verify numeric score values are actually rendered (0-100 scale)
     const numericValues = screen.getAllByText(/^\d+$/);
     expect(numericValues.length).toBeGreaterThanOrEqual(2);
   });

@@ -158,16 +158,16 @@ describe("TailorPage", () => {
     const apiResponse = {
       sections: [{ title: "Summary", content: "Test" }],
     };
-    // Mock tailor response and keyword extraction response (fired in parallel)
+    // Mock keyword extraction (called first), then tailor response
     mockFetch
       .mockResolvedValueOnce(
-        createMockResponse(JSON.stringify(apiResponse), {
+        createMockResponse(JSON.stringify({ keywords: ["react"] }), {
           status: 200,
           headers: { "content-type": "application/json" },
         })
       )
       .mockResolvedValueOnce(
-        createMockResponse(JSON.stringify({ keywords: ["react"] }), {
+        createMockResponse(JSON.stringify(apiResponse), {
           status: 200,
           headers: { "content-type": "application/json" },
         })
@@ -199,7 +199,14 @@ describe("TailorPage", () => {
 
   it("shows error on API failure", async () => {
     const user = userEvent.setup();
+    // Keyword extraction succeeds, tailor fails
     mockFetch
+      .mockResolvedValueOnce(
+        createMockResponse(JSON.stringify({ keywords: [] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      )
       .mockResolvedValueOnce(
         createMockResponse(
           JSON.stringify({ error: "Gemini API error (500)" }),
@@ -208,12 +215,6 @@ describe("TailorPage", () => {
             headers: { "content-type": "application/json" },
           }
         )
-      )
-      .mockResolvedValueOnce(
-        createMockResponse(JSON.stringify({ keywords: [] }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        })
       );
 
     render(<TailorPage />);
@@ -239,17 +240,18 @@ describe("TailorPage", () => {
 
   it("shows generic error when API returns non-JSON error", async () => {
     const user = userEvent.setup();
+    // Keyword extraction succeeds, tailor returns non-JSON
     mockFetch
-      .mockResolvedValueOnce(
-        createMockResponse("Internal Server Error", {
-          status: 500,
-          headers: { "content-type": "text/plain" },
-        })
-      )
       .mockResolvedValueOnce(
         createMockResponse(JSON.stringify({ keywords: [] }), {
           status: 200,
           headers: { "content-type": "application/json" },
+        })
+      )
+      .mockResolvedValueOnce(
+        createMockResponse("Internal Server Error", {
+          status: 500,
+          headers: { "content-type": "text/plain" },
         })
       );
 
@@ -299,17 +301,18 @@ describe("TailorPage", () => {
 
   it("shows error when API returns 200 but non-JSON response", async () => {
     const user = userEvent.setup();
+    // Keyword extraction succeeds, tailor returns non-JSON 200
     mockFetch
-      .mockResolvedValueOnce(
-        createMockResponse("", {
-          status: 200,
-          headers: { "content-type": "text/plain" },
-        })
-      )
       .mockResolvedValueOnce(
         createMockResponse(JSON.stringify({ keywords: [] }), {
           status: 200,
           headers: { "content-type": "application/json" },
+        })
+      )
+      .mockResolvedValueOnce(
+        createMockResponse("", {
+          status: 200,
+          headers: { "content-type": "text/plain" },
         })
       );
 
@@ -506,15 +509,16 @@ describe("TailorPage", () => {
       sections: [{ title: "Summary", content: "Test" }],
       coverLetter: "Dear...",
     };
+    // Keyword extraction first, then tailor
     mockFetch
       .mockResolvedValueOnce(
-        createMockResponse(JSON.stringify(apiResponse), {
+        createMockResponse(JSON.stringify({ keywords: [] }), {
           status: 200,
           headers: { "content-type": "application/json" },
         })
       )
       .mockResolvedValueOnce(
-        createMockResponse(JSON.stringify({ keywords: [] }), {
+        createMockResponse(JSON.stringify(apiResponse), {
           status: 200,
           headers: { "content-type": "application/json" },
         })
@@ -536,25 +540,27 @@ describe("TailorPage", () => {
     );
 
     await waitFor(() => {
-      const fetchBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      // Tailor call is second (index 1) — keyword extraction is first (index 0)
+      const fetchBody = JSON.parse(mockFetch.mock.calls[1][1].body);
       expect(fetchBody.generateCoverLetter).toBe(true);
     });
   });
 
   it("sends correct request body to /api/tailor", async () => {
     const user = userEvent.setup();
+    // Keyword extraction first, then tailor
     mockFetch
-      .mockResolvedValueOnce(
-        createMockResponse(
-          JSON.stringify({ sections: [{ title: "S", content: "C" }] }),
-          { status: 200, headers: { "content-type": "application/json" } }
-        )
-      )
       .mockResolvedValueOnce(
         createMockResponse(JSON.stringify({ keywords: [] }), {
           status: 200,
           headers: { "content-type": "application/json" },
         })
+      )
+      .mockResolvedValueOnce(
+        createMockResponse(
+          JSON.stringify({ sections: [{ title: "S", content: "C" }] }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
       );
 
     render(<TailorPage />);
@@ -572,6 +578,7 @@ describe("TailorPage", () => {
     );
 
     await waitFor(() => {
+      // Tailor call is second (index 1)
       expect(mockFetch).toHaveBeenCalledWith("/api/tailor", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -586,15 +593,68 @@ describe("TailorPage", () => {
 
   it("does not send provider or apiKey fields", async () => {
     const user = userEvent.setup();
+    // Keyword extraction first, then tailor
     mockFetch
+      .mockResolvedValueOnce(
+        createMockResponse(JSON.stringify({ keywords: [] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      )
       .mockResolvedValueOnce(
         createMockResponse(
           JSON.stringify({ sections: [{ title: "S", content: "C" }] }),
           { status: 200, headers: { "content-type": "application/json" } }
         )
+      );
+
+    render(<TailorPage />);
+
+    await user.type(
+      screen.getByPlaceholderText(/paste your full resume/i),
+      "My resume"
+    );
+    await user.type(
+      screen.getByPlaceholderText(/paste the job description/i),
+      "Job desc"
+    );
+    await user.click(
+      screen.getByRole("button", { name: /tailor resume/i })
+    );
+
+    await waitFor(() => {
+      // Tailor call is second (index 1)
+      const fetchBody = JSON.parse(mockFetch.mock.calls[1][1].body);
+      expect(fetchBody.provider).toBeUndefined();
+      expect(fetchBody.apiKey).toBeUndefined();
+    });
+  });
+
+  it("renders drag and drop zone", () => {
+    render(<TailorPage />);
+    expect(screen.getByText(/drag & drop a pdf/i)).toBeInTheDocument();
+  });
+
+  it("renders browse label for file upload", () => {
+    render(<TailorPage />);
+    expect(screen.getByText("browse")).toBeInTheDocument();
+  });
+
+  it("passes extracted keywords to tailor API as targetKeywords", async () => {
+    const user = userEvent.setup();
+    const apiResponse = {
+      sections: [{ title: "Summary", content: "Test" }],
+    };
+    // Keyword extraction returns keywords, then tailor succeeds
+    mockFetch
+      .mockResolvedValueOnce(
+        createMockResponse(JSON.stringify({ keywords: ["react", "typescript", "node.js"] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
       )
       .mockResolvedValueOnce(
-        createMockResponse(JSON.stringify({ keywords: [] }), {
+        createMockResponse(JSON.stringify(apiResponse), {
           status: 200,
           headers: { "content-type": "application/json" },
         })
@@ -615,19 +675,43 @@ describe("TailorPage", () => {
     );
 
     await waitFor(() => {
-      const fetchBody = JSON.parse(mockFetch.mock.calls[0][1].body);
-      expect(fetchBody.provider).toBeUndefined();
-      expect(fetchBody.apiKey).toBeUndefined();
+      // Tailor call is second (index 1)
+      const fetchBody = JSON.parse(mockFetch.mock.calls[1][1].body);
+      expect(fetchBody.targetKeywords).toEqual(["react", "typescript", "node.js"]);
     });
   });
 
-  it("renders drag and drop zone", () => {
-    render(<TailorPage />);
-    expect(screen.getByText(/drag & drop a pdf/i)).toBeInTheDocument();
-  });
+  it("still tailors successfully when keyword extraction fails", async () => {
+    const user = userEvent.setup();
+    const apiResponse = {
+      sections: [{ title: "Summary", content: "Test" }],
+    };
+    // Keyword extraction fails, tailor succeeds
+    mockFetch
+      .mockRejectedValueOnce(new Error("keyword extraction failed"))
+      .mockResolvedValueOnce(
+        createMockResponse(JSON.stringify(apiResponse), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      );
 
-  it("renders browse label for file upload", () => {
     render(<TailorPage />);
-    expect(screen.getByText("browse")).toBeInTheDocument();
+
+    await user.type(
+      screen.getByPlaceholderText(/paste your full resume/i),
+      "My resume"
+    );
+    await user.type(
+      screen.getByPlaceholderText(/paste the job description/i),
+      "Job desc"
+    );
+    await user.click(
+      screen.getByRole("button", { name: /tailor resume/i })
+    );
+
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith("/tailor/result");
+    });
   });
 });

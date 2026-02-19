@@ -26,6 +26,9 @@ Every section of the resume must be actively tailored — not just the summary. 
 - Group skills to match the JD's categories when possible (e.g., if the JD lists "React, Node.js, TypeScript" prominently, lead with those)
 - Include relevant skills from the resume that match JD keywords, even if they were listed less prominently in the original
 - Do NOT add skills the candidate doesn't have
+- NEVER create catch-all or dump categories like "Concepts:", "Methodologies:", "Soft Skills:", or "Core Competencies:" to stuff in keywords. This is a keyword-stuffing anti-pattern that recruiters and ATS reviewers instantly recognize as AI-generated.
+- Only use skill categories that a real developer would write (e.g., "Languages:", "Frameworks:", "Tools:", "Databases:", "Cloud/DevOps:")
+- If a keyword is a soft skill or methodology (e.g., "cross-functional collaboration", "growth-minded"), it belongs in experience bullets or the summary — NOT in the Skills section
 
 ### Experience — REWRITE EVERY BULLET
 - DO NOT copy bullets unchanged from the original resume. Every bullet should be actively rephrased.
@@ -60,6 +63,7 @@ Every section of the resume must be actively tailored — not just the summary. 
 5. Use exact JD phrasing, not synonyms — ATS systems match exact terms
 6. Never fabricate — only use a JD keyword if the candidate's actual experience supports it
 7. If a keyword cannot be naturally integrated, it is better to omit it than to force it in awkwardly
+8. NEVER dump unplaced keywords into a list or new section. There should be no "Concepts:", "Key Competencies:", or similar catch-all sections that did not exist in the original resume
 
 ### General
 - Do NOT fabricate experience, skills, or achievements the candidate doesn't have

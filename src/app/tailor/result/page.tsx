@@ -21,6 +21,13 @@ interface TailorResult {
   sections: Section[];
   coverLetter?: string;
   jobTitle?: string;
+  personalInfo?: {
+    fullName?: string;
+    email?: string;
+    phone?: string;
+    location?: string;
+    linkedin?: string;
+  };
 }
 
 export default function ResultPage() {
@@ -77,25 +84,29 @@ export default function ResultPage() {
         setJobTitle(parsed.jobTitle.trim());
       }
 
-      // Load personal info
+      // Load personal info: merge manual (from input page) with LLM-extracted (from API response)
+      // Manual entries take priority — LLM fills in gaps
+      const llmInfo = parsed.personalInfo || {};
       const storedPersonalInfo = sessionStorage.getItem("tailorPersonalInfo");
+      let manualInfo: Record<string, string> = {};
       if (storedPersonalInfo) {
         try {
           const parsedInfo = JSON.parse(storedPersonalInfo);
           if (parsedInfo && typeof parsedInfo === "object") {
-            setPersonalInfo({
-              fullName: parsedInfo.fullName || "",
-              email: parsedInfo.email || "",
-              phone: parsedInfo.phone || "",
-              location: parsedInfo.location || "",
-              linkedin: parsedInfo.linkedin || "",
-            });
+            manualInfo = parsedInfo;
           }
         } catch {
           // ignore
         }
         sessionStorage.removeItem("tailorPersonalInfo");
       }
+      setPersonalInfo({
+        fullName: manualInfo.fullName || llmInfo.fullName || "",
+        email: manualInfo.email || llmInfo.email || "",
+        phone: manualInfo.phone || llmInfo.phone || "",
+        location: manualInfo.location || llmInfo.location || "",
+        linkedin: manualInfo.linkedin || llmInfo.linkedin || "",
+      });
 
       // Clean up sensitive data from sessionStorage after reading
       sessionStorage.removeItem("tailorOriginalResume");

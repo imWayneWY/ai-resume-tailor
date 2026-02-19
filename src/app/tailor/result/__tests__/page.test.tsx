@@ -351,4 +351,53 @@ describe("ResultPage", () => {
 
     expect(screen.getByText(/linkedin\.com\/in\/janesmith/)).toBeInTheDocument();
   });
+
+  it("uses LLM-extracted personal info from API response", () => {
+    sessionStore.tailorResult = JSON.stringify({
+      ...validResult,
+      personalInfo: {
+        fullName: "Yan Wei",
+        email: "im.weiyan@foxmail.com",
+        phone: "587-439-8687",
+        location: "Langley, BC, Canada",
+        linkedin: "linkedin.com/in/yan-wei-ca",
+      },
+    });
+    // No tailorPersonalInfo in sessionStorage — purely from API
+    render(<ResultPage />);
+
+    expect(screen.getByPlaceholderText("Full Name")).toHaveValue("Yan Wei");
+    expect(screen.getByPlaceholderText("Email")).toHaveValue("im.weiyan@foxmail.com");
+    expect(screen.getByPlaceholderText("Phone")).toHaveValue("587-439-8687");
+    expect(screen.getByPlaceholderText("Location")).toHaveValue("Langley, BC, Canada");
+    expect(screen.getByPlaceholderText("linkedin.com/in/johndoe")).toHaveValue("linkedin.com/in/yan-wei-ca");
+  });
+
+  it("prefers manual personal info over LLM-extracted", () => {
+    sessionStore.tailorResult = JSON.stringify({
+      ...validResult,
+      personalInfo: {
+        fullName: "LLM Name",
+        email: "llm@test.com",
+        phone: "",
+        location: "LLM City",
+        linkedin: "",
+      },
+    });
+    sessionStore.tailorPersonalInfo = JSON.stringify({
+      fullName: "Manual Name",
+      email: "",
+      phone: "555-1234",
+      location: "",
+      linkedin: "linkedin.com/in/manual",
+    });
+    render(<ResultPage />);
+
+    // Manual entries win when non-empty, LLM fills gaps
+    expect(screen.getByPlaceholderText("Full Name")).toHaveValue("Manual Name");
+    expect(screen.getByPlaceholderText("Email")).toHaveValue("llm@test.com"); // LLM fills gap
+    expect(screen.getByPlaceholderText("Phone")).toHaveValue("555-1234"); // manual
+    expect(screen.getByPlaceholderText("Location")).toHaveValue("LLM City"); // LLM fills gap
+    expect(screen.getByPlaceholderText("linkedin.com/in/johndoe")).toHaveValue("linkedin.com/in/manual"); // manual
+  });
 });

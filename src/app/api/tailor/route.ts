@@ -26,6 +26,9 @@ Every section of the resume must be actively tailored — not just the summary. 
 - Group skills to match the JD's categories when possible (e.g., if the JD lists "React, Node.js, TypeScript" prominently, lead with those)
 - Include relevant skills from the resume that match JD keywords, even if they were listed less prominently in the original
 - Do NOT add skills the candidate doesn't have
+- NEVER create catch-all or dump categories like "Concepts:", "Methodologies:", "Soft Skills:", or "Core Competencies:" to stuff in keywords. This is a keyword-stuffing anti-pattern that recruiters and ATS reviewers instantly recognize as AI-generated.
+- Only use skill categories that a real developer would write (e.g., "Languages:", "Frameworks:", "Tools:", "Databases:", "Cloud/DevOps:")
+- If a keyword is a soft skill or methodology (e.g., "cross-functional collaboration", "growth-minded"), it belongs in experience bullets or the summary — NOT in the Skills section
 
 ### Experience — REWRITE EVERY BULLET
 - DO NOT copy bullets unchanged from the original resume. Every bullet should be actively rephrased.
@@ -60,6 +63,7 @@ Every section of the resume must be actively tailored — not just the summary. 
 5. Use exact JD phrasing, not synonyms — ATS systems match exact terms
 6. Never fabricate — only use a JD keyword if the candidate's actual experience supports it
 7. If a keyword cannot be naturally integrated, it is better to omit it than to force it in awkwardly
+8. NEVER dump unplaced keywords into a list or new section. There should be no "Concepts:", "Key Competencies:", or similar catch-all sections that did not exist in the original resume
 
 ### General
 - Do NOT fabricate experience, skills, or achievements the candidate doesn't have
@@ -70,6 +74,13 @@ Every section of the resume must be actively tailored — not just the summary. 
 Respond with ONLY valid JSON, no markdown fences:
 {
   "jobTitle": "...",
+  "personalInfo": {
+    "fullName": "...",
+    "email": "...",
+    "phone": "...",
+    "location": "...",
+    "linkedin": "..."
+  },
   "sections": [
     { "title": "Summary", "content": "..." },
     { "title": "Skills", "content": "..." },
@@ -80,6 +91,8 @@ Respond with ONLY valid JSON, no markdown fences:
 }
 
 The "jobTitle" field should contain the exact job title extracted from the job description (e.g., "Senior Software Engineer", "Product Manager"). If no clear job title is stated in the job description, omit the "jobTitle" field entirely — do NOT guess or fabricate one.
+
+The "personalInfo" field should be extracted from the RESUME (not the job description). Extract the candidate's full name, email, phone number, city/province/country location (not full street address), and LinkedIn URL. Omit any field that is not clearly present in the resume. For location, use a clean format like "Langley, BC, Canada" — do not include street addresses or unit numbers.
 
 Include all relevant sections. The "content" field should use plain text with newlines for formatting. Use **bold** markers for emphasis (e.g., company names, role titles). For experience entries, use this format:
 **Company Name** — Role Title (Date Range)
@@ -201,7 +214,18 @@ async function callAzureOpenAI(
 }
 
 function parseAndValidateResponse(text: string): NextResponse {
-  let parsed: { jobTitle?: string; sections: { title: string; content: string }[]; coverLetter?: string };
+  let parsed: {
+    jobTitle?: string;
+    personalInfo?: {
+      fullName?: string;
+      email?: string;
+      phone?: string;
+      location?: string;
+      linkedin?: string;
+    };
+    sections: { title: string; content: string }[];
+    coverLetter?: string;
+  };
   try {
     parsed = JSON.parse(text);
   } catch {
@@ -235,7 +259,16 @@ function parseAndValidateResponse(text: string): NextResponse {
     parsed.jobTitle !== undefined &&
     typeof parsed.jobTitle !== "string";
 
-  if (hasInvalidSection || hasInvalidCoverLetter || hasInvalidJobTitle) {
+  // Validate personalInfo: if present, must be an object with optional string fields
+  const hasInvalidPersonalInfo = (() => {
+    if (!("personalInfo" in parsed) || parsed.personalInfo === undefined) return false;
+    if (typeof parsed.personalInfo !== "object" || parsed.personalInfo === null) return true;
+    const info = parsed.personalInfo;
+    const fields = [info.fullName, info.email, info.phone, info.location, info.linkedin];
+    return fields.some((f) => f !== undefined && typeof f !== "string");
+  })();
+
+  if (hasInvalidSection || hasInvalidCoverLetter || hasInvalidJobTitle || hasInvalidPersonalInfo) {
     return NextResponse.json(
       { error: "AI returned invalid resume structure" },
       { status: 502 }

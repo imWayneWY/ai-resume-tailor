@@ -84,28 +84,14 @@ export default function ResultPage() {
         setJobTitle(parsed.jobTitle.trim());
       }
 
-      // Load personal info: merge manual (from input page) with LLM-extracted (from API response)
-      // Manual entries take priority — LLM fills in gaps
+      // Load personal info from LLM extraction (API response)
       const llmInfo = parsed.personalInfo || {};
-      const storedPersonalInfo = sessionStorage.getItem("tailorPersonalInfo");
-      let manualInfo: Record<string, string> = {};
-      if (storedPersonalInfo) {
-        try {
-          const parsedInfo = JSON.parse(storedPersonalInfo);
-          if (parsedInfo && typeof parsedInfo === "object") {
-            manualInfo = parsedInfo;
-          }
-        } catch {
-          // ignore
-        }
-        sessionStorage.removeItem("tailorPersonalInfo");
-      }
       setPersonalInfo({
-        fullName: manualInfo.fullName || llmInfo.fullName || "",
-        email: manualInfo.email || llmInfo.email || "",
-        phone: manualInfo.phone || llmInfo.phone || "",
-        location: manualInfo.location || llmInfo.location || "",
-        linkedin: manualInfo.linkedin || llmInfo.linkedin || "",
+        fullName: llmInfo.fullName || "",
+        email: llmInfo.email || "",
+        phone: llmInfo.phone || "",
+        location: llmInfo.location || "",
+        linkedin: llmInfo.linkedin || "",
       });
 
       // Clean up sensitive data from sessionStorage after reading
@@ -147,8 +133,8 @@ export default function ResultPage() {
       const current: TailorResult = JSON.parse(stored);
       current.sections = editableSections;
       current.jobTitle = jobTitle;
+      current.personalInfo = personalInfo;
       sessionStorage.setItem("tailorResult", JSON.stringify(current));
-      sessionStorage.setItem("tailorPersonalInfo", JSON.stringify(personalInfo));
     } catch {
       // ignore
     }

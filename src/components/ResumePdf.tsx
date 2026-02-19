@@ -42,7 +42,7 @@ const styles = StyleSheet.create({
     fontFamily: "Helvetica-Bold",
     color: "#111827",
     textAlign: "center" as const,
-    marginBottom: 6,
+    marginBottom: 10,
   },
   headerJobTitle: {
     fontSize: 11,

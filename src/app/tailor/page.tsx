@@ -17,15 +17,12 @@ export default function TailorPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [apiError, setApiError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [fileName, setFileName] = useState("");
 
-  // Personal info fields
-  const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [location, setLocation] = useState("");
-  const [linkedin, setLinkedin] = useState("");
-
-  // Personal info is now extracted by the LLM during tailoring (no client-side regex)
+  // JD URL fetch
+  const [jdUrl, setJdUrl] = useState("");
+  const [isFetchingJd, setIsFetchingJd] = useState(false);
+  const [jdFetchError, setJdFetchError] = useState("");
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -99,6 +96,7 @@ export default function TailorPage() {
 
         if (data && typeof data.text === "string" && data.text.length > 0) {
           setResume(data.text);
+          setFileName(file.name);
         } else {
           setFileError("No text could be extracted from the PDF.");
         }
@@ -128,6 +126,52 @@ export default function TailorPage() {
     },
     [processFile]
   );
+
+  const handleFetchJd = async () => {
+    const trimmedUrl = jdUrl.trim();
+    if (!trimmedUrl) return;
+
+    setJdFetchError("");
+    setIsFetchingJd(true);
+
+    try {
+      const response = await fetch("/api/fetch-jd", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: trimmedUrl }),
+      });
+
+      const contentType = response.headers.get("content-type") || "";
+      const text = await response.text();
+
+      let data: Record<string, unknown> | null = null;
+      if (contentType.includes("application/json") && text) {
+        try {
+          data = JSON.parse(text);
+        } catch {
+          // JSON parsing failed
+        }
+      }
+
+      if (!response.ok) {
+        const errorMessage =
+          (data && typeof data.error === "string" && data.error) ||
+          "Failed to fetch job description from URL.";
+        setJdFetchError(errorMessage);
+        return;
+      }
+
+      if (data && typeof data.jobDescription === "string" && data.jobDescription.length > 0) {
+        setJobDescription(data.jobDescription);
+      } else {
+        setJdFetchError("No job description could be extracted from this URL.");
+      }
+    } catch {
+      setJdFetchError("Network error — please check the URL and try again.");
+    } finally {
+      setIsFetchingJd(false);
+    }
+  };
 
   const handleSubmit = async () => {
     setApiError("");
@@ -205,10 +249,6 @@ export default function TailorPage() {
         );
       }
 
-      // Store personal info for the result page
-      const personalInfo = { fullName, email, phone, location, linkedin };
-      sessionStorage.setItem("tailorPersonalInfo", JSON.stringify(personalInfo));
-
       router.push("/tailor/result");
     } catch {
       setApiError(
@@ -229,134 +269,159 @@ export default function TailorPage() {
           Tailor your resume
         </h1>
         <p className="mt-1 text-sm text-muted sm:text-base">
-          Paste your master resume and the job description. We&apos;ll handle
+          Upload your resume and provide the job description. We&apos;ll handle
           the rest.
         </p>
       </div>
 
-      {/* Personal Info */}
-      <div className="mb-6 rounded-lg border border-border bg-white p-4 sm:mb-8 sm:p-6">
-        <h2 className="mb-3 text-sm font-medium">Personal Information</h2>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
-          <div>
-            <label htmlFor="fullName" className="mb-1 block text-xs text-muted">
-              Full Name
-            </label>
-            <input
-              id="fullName"
-              type="text"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              placeholder="John Doe"
-              disabled={isLoading}
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none disabled:opacity-50"
-            />
-          </div>
-          <div>
-            <label htmlFor="email" className="mb-1 block text-xs text-muted">
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="john@example.com"
-              disabled={isLoading}
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none disabled:opacity-50"
-            />
-          </div>
-          <div>
-            <label htmlFor="phone" className="mb-1 block text-xs text-muted">
-              Phone
-            </label>
-            <input
-              id="phone"
-              type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="(555) 123-4567"
-              disabled={isLoading}
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none disabled:opacity-50"
-            />
-          </div>
-          <div>
-            <label htmlFor="location" className="mb-1 block text-xs text-muted">
-              Location
-            </label>
-            <input
-              id="location"
-              type="text"
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              placeholder="Vancouver, BC"
-              disabled={isLoading}
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none disabled:opacity-50"
-            />
-          </div>
-          <div>
-            <label htmlFor="linkedin" className="mb-1 block text-xs text-muted">
-              LinkedIn
-            </label>
-            <input
-              id="linkedin"
-              type="text"
-              value={linkedin}
-              onChange={(e) => setLinkedin(e.target.value)}
-              placeholder="linkedin.com/in/johndoe"
-              disabled={isLoading}
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none disabled:opacity-50"
-            />
-          </div>
-        </div>
-      </div>
-
       <div className="grid grid-cols-1 gap-6 sm:gap-8 md:grid-cols-2">
-        {/* Left column — Resume */}
+        {/* Left column — Resume Upload */}
         <div className="flex flex-col gap-4">
-          <label htmlFor="resume" className="text-sm font-medium">
-            Master Resume
+          <label className="text-sm font-medium">
+            Upload Resume (PDF)
           </label>
-          <textarea
-            id="resume"
-            value={resume}
-            onChange={(e) => setResume(e.target.value)}
-            placeholder="Paste your full resume here..."
-            disabled={isLoading || isParsing}
-            className="h-64 resize-y rounded-lg border border-border bg-white p-4 text-sm leading-relaxed placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none disabled:opacity-50"
-          />
 
           {/* PDF upload zone */}
           <div
             onDragOver={isLoading || isParsing ? undefined : handleDragOver}
             onDragLeave={isLoading || isParsing ? undefined : handleDragLeave}
             onDrop={isLoading || isParsing ? undefined : handleDrop}
-            className={`flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-6 text-center transition-colors ${
+            className={`flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 text-center transition-colors ${
               isLoading || isParsing
                 ? "border-border bg-surface opacity-50 cursor-not-allowed"
                 : isDragging
                   ? "border-accent bg-accent/5"
-                  : "border-border bg-surface"
+                  : fileName
+                    ? "border-green-300 bg-green-50"
+                    : "border-border bg-surface"
             }`}
           >
-            <svg
-              className="mb-2 h-8 w-8 text-muted"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              aria-hidden="true"
-              focusable="false"
+            {fileName ? (
+              <>
+                <svg
+                  className="mb-2 h-8 w-8 text-green-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M5 13l4 4L19 7"
+                  />
+                </svg>
+                <p className="text-sm font-medium text-green-700">{fileName}</p>
+                <p className="mt-1 text-xs text-green-600">Resume loaded successfully</p>
+                <label className="mt-3 cursor-pointer text-xs font-medium text-accent hover:text-accent-hover">
+                  Upload a different file
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pdf"
+                    className="hidden"
+                    aria-label="Upload PDF resume"
+                    disabled={isLoading || isParsing}
+                    onChange={handleFileSelect}
+                  />
+                </label>
+              </>
+            ) : (
+              <>
+                <svg
+                  className="mb-2 h-8 w-8 text-muted"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                  focusable="false"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.5}
+                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                  />
+                </svg>
+                <p className="text-sm text-muted">
+                  {isParsing ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <svg
+                        className="h-4 w-4 animate-spin"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        aria-hidden="true"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        />
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                        />
+                      </svg>
+                      Extracting text from PDF…
+                    </span>
+                  ) : (
+                    <>
+                      Drag &amp; drop your resume PDF here, or{" "}
+                      <label
+                        className={`font-medium ${isLoading ? "pointer-events-none text-muted" : "cursor-pointer text-accent hover:text-accent-hover"}`}
+                      >
+                        browse
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept=".pdf"
+                          className="hidden"
+                          aria-label="Upload PDF resume"
+                          disabled={isLoading || isParsing}
+                          onChange={handleFileSelect}
+                        />
+                      </label>
+                    </>
+                  )}
+                </p>
+              </>
+            )}
+            {fileError && (
+              <p role="alert" className="mt-2 text-sm text-red-600">
+                {fileError}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Right column — Job Description */}
+        <div className="flex flex-col gap-4">
+          <label htmlFor="jobDescription" className="text-sm font-medium">
+            Job Description
+          </label>
+
+          {/* JD URL input */}
+          <div className="flex gap-2">
+            <input
+              type="url"
+              value={jdUrl}
+              onChange={(e) => setJdUrl(e.target.value)}
+              placeholder="Paste job posting URL to auto-fill..."
+              disabled={isLoading || isFetchingJd}
+              className="flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none disabled:opacity-50"
+            />
+            <button
+              onClick={handleFetchJd}
+              disabled={!jdUrl.trim() || isLoading || isFetchingJd}
+              className="flex items-center gap-1.5 rounded-lg bg-accent/10 px-3 py-2 text-sm font-medium text-accent transition-colors hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-              />
-            </svg>
-            <p className="text-sm text-muted">
-              {isParsing ? (
-                <span className="flex items-center justify-center gap-2">
+              {isFetchingJd ? (
+                <>
                   <svg
                     className="h-4 w-4 animate-spin"
                     viewBox="0 0 24 24"
@@ -377,46 +442,24 @@ export default function TailorPage() {
                       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
                     />
                   </svg>
-                  Extracting text from PDF…
-                </span>
-              ) : (
-                <>
-                  Drag &amp; drop a PDF here, or{" "}
-                  <label
-                    className={`font-medium ${isLoading ? "pointer-events-none text-muted" : "cursor-pointer text-accent hover:text-accent-hover"}`}
-                  >
-                    browse
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept=".pdf"
-                      className="hidden"
-                      aria-label="Upload PDF resume"
-                      disabled={isLoading || isParsing}
-                      onChange={handleFileSelect}
-                    />
-                  </label>
+                  Fetching…
                 </>
+              ) : (
+                "Fetch"
               )}
-            </p>
-            {fileError && (
-              <p role="alert" className="mt-2 text-sm text-red-600">
-                {fileError}
-              </p>
-            )}
+            </button>
           </div>
-        </div>
+          {jdFetchError && (
+            <p role="alert" className="text-sm text-red-600">
+              {jdFetchError}
+            </p>
+          )}
 
-        {/* Right column — Job Description */}
-        <div className="flex flex-col gap-4">
-          <label htmlFor="jobDescription" className="text-sm font-medium">
-            Job Description
-          </label>
           <textarea
             id="jobDescription"
             value={jobDescription}
             onChange={(e) => setJobDescription(e.target.value)}
-            placeholder="Paste the job description here..."
+            placeholder="Or paste the job description here..."
             disabled={isLoading}
             className="h-64 resize-y rounded-lg border border-border bg-white p-4 text-sm leading-relaxed placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none disabled:opacity-50"
           />

@@ -258,12 +258,14 @@ describe("ResultPage", () => {
   });
 
   it("renders personal info in preview when provided", () => {
-    sessionStore.tailorResult = JSON.stringify(validResult);
-    sessionStore.tailorPersonalInfo = JSON.stringify({
-      fullName: "Jane Smith",
-      email: "jane@example.com",
-      phone: "555-1234",
-      location: "Vancouver, BC",
+    sessionStore.tailorResult = JSON.stringify({
+      ...validResult,
+      personalInfo: {
+        fullName: "Jane Smith",
+        email: "jane@example.com",
+        phone: "555-1234",
+        location: "Vancouver, BC",
+      },
     });
     render(<ResultPage />);
 
@@ -277,12 +279,9 @@ describe("ResultPage", () => {
     sessionStore.tailorResult = JSON.stringify({
       ...validResult,
       jobTitle: "Senior Software Engineer",
-    });
-    sessionStore.tailorPersonalInfo = JSON.stringify({
-      fullName: "Jane Smith",
-      email: "",
-      phone: "",
-      location: "",
+      personalInfo: {
+        fullName: "Jane Smith",
+      },
     });
     render(<ResultPage />);
 
@@ -290,12 +289,14 @@ describe("ResultPage", () => {
   });
 
   it("renders editable personal info fields", () => {
-    sessionStore.tailorResult = JSON.stringify(validResult);
-    sessionStore.tailorPersonalInfo = JSON.stringify({
-      fullName: "Jane Smith",
-      email: "jane@example.com",
-      phone: "",
-      location: "",
+    sessionStore.tailorResult = JSON.stringify({
+      ...validResult,
+      personalInfo: {
+        fullName: "Jane Smith",
+        email: "jane@example.com",
+        phone: "",
+        location: "",
+      },
     });
     render(<ResultPage />);
 
@@ -325,13 +326,15 @@ describe("ResultPage", () => {
   });
 
   it("renders LinkedIn field in edit panel", () => {
-    sessionStore.tailorResult = JSON.stringify(validResult);
-    sessionStore.tailorPersonalInfo = JSON.stringify({
-      fullName: "Jane Smith",
-      email: "",
-      phone: "",
-      location: "",
-      linkedin: "linkedin.com/in/janesmith",
+    sessionStore.tailorResult = JSON.stringify({
+      ...validResult,
+      personalInfo: {
+        fullName: "Jane Smith",
+        email: "",
+        phone: "",
+        location: "",
+        linkedin: "linkedin.com/in/janesmith",
+      },
     });
     render(<ResultPage />);
 
@@ -339,13 +342,15 @@ describe("ResultPage", () => {
   });
 
   it("shows LinkedIn in preview contact line", () => {
-    sessionStore.tailorResult = JSON.stringify(validResult);
-    sessionStore.tailorPersonalInfo = JSON.stringify({
-      fullName: "Jane Smith",
-      email: "jane@test.com",
-      phone: "",
-      location: "",
-      linkedin: "linkedin.com/in/janesmith",
+    sessionStore.tailorResult = JSON.stringify({
+      ...validResult,
+      personalInfo: {
+        fullName: "Jane Smith",
+        email: "jane@test.com",
+        phone: "",
+        location: "",
+        linkedin: "linkedin.com/in/janesmith",
+      },
     });
     render(<ResultPage />);
 
@@ -363,7 +368,6 @@ describe("ResultPage", () => {
         linkedin: "linkedin.com/in/yan-wei-ca",
       },
     });
-    // No tailorPersonalInfo in sessionStorage — purely from API
     render(<ResultPage />);
 
     expect(screen.getByPlaceholderText("Full Name")).toHaveValue("Yan Wei");
@@ -371,33 +375,5 @@ describe("ResultPage", () => {
     expect(screen.getByPlaceholderText("Phone")).toHaveValue("587-439-8687");
     expect(screen.getByPlaceholderText("Location")).toHaveValue("Langley, BC, Canada");
     expect(screen.getByPlaceholderText("linkedin.com/in/johndoe")).toHaveValue("linkedin.com/in/yan-wei-ca");
-  });
-
-  it("prefers manual personal info over LLM-extracted", () => {
-    sessionStore.tailorResult = JSON.stringify({
-      ...validResult,
-      personalInfo: {
-        fullName: "LLM Name",
-        email: "llm@test.com",
-        phone: "",
-        location: "LLM City",
-        linkedin: "",
-      },
-    });
-    sessionStore.tailorPersonalInfo = JSON.stringify({
-      fullName: "Manual Name",
-      email: "",
-      phone: "555-1234",
-      location: "",
-      linkedin: "linkedin.com/in/manual",
-    });
-    render(<ResultPage />);
-
-    // Manual entries win when non-empty, LLM fills gaps
-    expect(screen.getByPlaceholderText("Full Name")).toHaveValue("Manual Name");
-    expect(screen.getByPlaceholderText("Email")).toHaveValue("llm@test.com"); // LLM fills gap
-    expect(screen.getByPlaceholderText("Phone")).toHaveValue("555-1234"); // manual
-    expect(screen.getByPlaceholderText("Location")).toHaveValue("LLM City"); // LLM fills gap
-    expect(screen.getByPlaceholderText("linkedin.com/in/johndoe")).toHaveValue("linkedin.com/in/manual"); // manual
   });
 });

@@ -6,6 +6,47 @@ import { useRouter } from "next/navigation";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
+/**
+ * Extract personal info (name, email, phone, location, linkedin) from resume text.
+ * Only extracts from the first ~15 lines (header area).
+ */
+function extractPersonalInfo(text: string) {
+  const headerLines = text.split("\n").slice(0, 15).join("\n");
+
+  const emailMatch = headerLines.match(/[\w.+-]+@[\w-]+\.[\w.]+/);
+  const phoneMatch = headerLines.match(/(\+?1[-.\s]?)?(\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})/);
+  const linkedinMatch = headerLines.match(/(?:https?:\/\/)?(?:www\.)?linkedin\.com\/in\/[\w-]+/i);
+
+  // Location: common patterns like "City, ST" or "City, State" or "City, Province, Country"
+  const locationMatch = headerLines.match(
+    /([A-Z][a-zA-Z\s]+,\s*(?:[A-Z]{2}|[A-Za-z\s]+)(?:,\s*[A-Za-z\s]+)?)\s*(?:\d{5})?/
+  );
+
+  // Name: first non-empty line that isn't email/phone/url
+  let name = "";
+  const lines = text.split("\n");
+  for (const line of lines.slice(0, 5)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    // Skip lines that look like email, phone, URL, or address
+    if (/@/.test(trimmed) || /\d{3}[-.\s]?\d{3}[-.\s]?\d{4}/.test(trimmed)) continue;
+    if (/linkedin\.com|http|www\./i.test(trimmed)) continue;
+    // Likely the name — should be short (< 50 chars) and mostly letters
+    if (trimmed.length < 50 && /^[A-Za-z\s.'-]+$/.test(trimmed)) {
+      name = trimmed;
+      break;
+    }
+  }
+
+  return {
+    fullName: name,
+    email: emailMatch?.[0] || "",
+    phone: phoneMatch?.[0] || "",
+    location: locationMatch?.[1]?.trim() || "",
+    linkedin: linkedinMatch?.[0] || "",
+  };
+}
+
 export default function TailorPage() {
   const router = useRouter();
   const [resume, setResume] = useState("");
@@ -23,6 +64,19 @@ export default function TailorPage() {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [location, setLocation] = useState("");
+  const [linkedin, setLinkedin] = useState("");
+
+  // Auto-fill personal info from resume text (only fills empty fields)
+  // Triggered by handleExtractPersonalInfo callback, not on every keystroke
+  const handleExtractPersonalInfo = useCallback((text: string) => {
+    const info = extractPersonalInfo(text);
+    if (!info.fullName && !info.email && !info.phone && !info.location && !info.linkedin) return;
+    setFullName((prev) => prev || info.fullName);
+    setEmail((prev) => prev || info.email);
+    setPhone((prev) => prev || info.phone);
+    setLocation((prev) => prev || info.location);
+    setLinkedin((prev) => prev || info.linkedin);
+  }, []);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -96,6 +150,7 @@ export default function TailorPage() {
 
         if (data && typeof data.text === "string" && data.text.length > 0) {
           setResume(data.text);
+          handleExtractPersonalInfo(data.text);
         } else {
           setFileError("No text could be extracted from the PDF.");
         }
@@ -105,7 +160,7 @@ export default function TailorPage() {
         setIsParsing(false);
       }
     },
-    [resume]
+    [resume, handleExtractPersonalInfo]
   );
 
   const handleDrop = useCallback(
@@ -203,7 +258,7 @@ export default function TailorPage() {
       }
 
       // Store personal info for the result page
-      const personalInfo = { fullName, email, phone, location };
+      const personalInfo = { fullName, email, phone, location, linkedin };
       sessionStorage.setItem("tailorPersonalInfo", JSON.stringify(personalInfo));
 
       router.push("/tailor/result");
@@ -291,6 +346,20 @@ export default function TailorPage() {
               className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none disabled:opacity-50"
             />
           </div>
+          <div>
+            <label htmlFor="linkedin" className="mb-1 block text-xs text-muted">
+              LinkedIn
+            </label>
+            <input
+              id="linkedin"
+              type="text"
+              value={linkedin}
+              onChange={(e) => setLinkedin(e.target.value)}
+              placeholder="linkedin.com/in/johndoe"
+              disabled={isLoading}
+              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none disabled:opacity-50"
+            />
+          </div>
         </div>
       </div>
 
@@ -304,6 +373,7 @@ export default function TailorPage() {
             id="resume"
             value={resume}
             onChange={(e) => setResume(e.target.value)}
+            onBlur={() => { if (resume.trim()) handleExtractPersonalInfo(resume); }}
             placeholder="Paste your full resume here..."
             disabled={isLoading || isParsing}
             className="h-64 resize-y rounded-lg border border-border bg-white p-4 text-sm leading-relaxed placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none disabled:opacity-50"

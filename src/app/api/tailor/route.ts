@@ -81,7 +81,7 @@ Respond with ONLY valid JSON, no markdown fences:
 
 The "jobTitle" field should contain the exact job title extracted from the job description (e.g., "Senior Software Engineer", "Product Manager"). If no clear job title is stated in the job description, omit the "jobTitle" field entirely — do NOT guess or fabricate one.
 
-Include all relevant sections. The "content" field should use plain text with newlines for formatting. For experience entries, use this format:
+Include all relevant sections. The "content" field should use plain text with newlines for formatting. Use **bold** markers for emphasis (e.g., company names, role titles). For experience entries, use this format:
 **Company Name** — Role Title (Date Range)
 • Achievement or responsibility
 • Achievement or responsibility`;

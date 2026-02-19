@@ -16,6 +16,7 @@ export interface PdfPersonalInfo {
   email?: string;
   phone?: string;
   location?: string;
+  linkedin?: string;
 }
 
 interface ResumePdfProps {
@@ -41,19 +42,19 @@ const styles = StyleSheet.create({
     fontFamily: "Helvetica-Bold",
     color: "#111827",
     textAlign: "center" as const,
-    marginBottom: 2,
+    marginBottom: 6,
   },
   headerJobTitle: {
     fontSize: 11,
     color: "#4b5563",
     textAlign: "center" as const,
-    marginBottom: 2,
+    marginBottom: 4,
   },
   headerContact: {
     fontSize: 10,
     color: "#4b5563",
     textAlign: "center" as const,
-    marginBottom: 2,
+    marginBottom: 4,
   },
   headerDivider: {
     borderBottomWidth: 1.5,
@@ -84,6 +85,13 @@ const styles = StyleSheet.create({
   line: {
     marginBottom: 1,
   },
+  boldText: {
+    fontFamily: "Helvetica-Bold",
+  },
+  bulletLine: {
+    marginBottom: 2,
+    paddingLeft: 8,
+  },
   // --- Cover letter ---
   coverLetterHeading: {
     fontSize: 18,
@@ -98,18 +106,49 @@ const styles = StyleSheet.create({
   },
 });
 
+/**
+ * Parse inline **bold** markers into mixed Text spans.
+ */
+function renderInlineMarkdown(text: string) {
+  const parts = text.split(/(\*\*.*?\*\*)/g);
+  if (parts.length === 1) return text;
+  return parts.map((part, i) => {
+    if (part.startsWith("**") && part.endsWith("**")) {
+      return (
+        <Text key={i} style={styles.boldText}>
+          {part.slice(2, -2)}
+        </Text>
+      );
+    }
+    return <Text key={i}>{part}</Text>;
+  });
+}
+
 function renderContent(content: string) {
   const lines = content.split("\n");
-  return lines.map((line, i) => (
-    <Text key={i} style={styles.line}>
-      {line || " "}
-    </Text>
-  ));
+  return lines.map((line, i) => {
+    const trimmed = line.trim();
+    // Bullet lines: •, -, or *
+    if (/^[•\-*]\s+/.test(trimmed)) {
+      const bulletText = trimmed.replace(/^[•\-*]\s+/, "");
+      return (
+        <Text key={i} style={styles.bulletLine}>
+          {"•  "}
+          {renderInlineMarkdown(bulletText)}
+        </Text>
+      );
+    }
+    return (
+      <Text key={i} style={styles.line}>
+        {renderInlineMarkdown(line) || " "}
+      </Text>
+    );
+  });
 }
 
 export default function ResumePdf({ sections, coverLetter, personalInfo, jobTitle }: ResumePdfProps) {
   const contactParts = personalInfo
-    ? [personalInfo.email, personalInfo.phone, personalInfo.location].filter(
+    ? [personalInfo.email, personalInfo.phone, personalInfo.location, personalInfo.linkedin].filter(
         (p) => p && p.trim()
       )
     : [];

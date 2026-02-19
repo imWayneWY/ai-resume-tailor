@@ -137,4 +137,51 @@ describe("ResumePdf", () => {
     expect(section.title).toBe("Test");
     expect(section.content).toBe("Content");
   });
+
+  it("renders personal info header when provided", () => {
+    const html = ReactDOMServer.renderToStaticMarkup(
+      React.createElement(ResumePdf, {
+        sections: mockSections,
+        personalInfo: {
+          fullName: "Jane Smith",
+          email: "jane@test.com",
+          phone: "555-9876",
+          location: "Vancouver, BC",
+          linkedin: "linkedin.com/in/janesmith",
+        },
+        jobTitle: "Senior Software Engineer",
+      })
+    );
+    expect(html).toContain("Jane Smith");
+    expect(html).toContain("Senior Software Engineer");
+    expect(html).toContain("jane@test.com");
+    expect(html).toContain("555-9876");
+    expect(html).toContain("Vancouver, BC");
+    expect(html).toContain("linkedin.com/in/janesmith");
+  });
+
+  it("renders bold text from **markers**", () => {
+    const sections = [
+      { title: "Experience", content: "**ACME Corp** — Senior Dev (2020-2024)\n• Built things" },
+    ];
+    const html = ReactDOMServer.renderToStaticMarkup(
+      React.createElement(ResumePdf, { sections })
+    );
+    // Bold text should be rendered without the ** markers
+    expect(html).toContain("ACME Corp");
+    expect(html).not.toContain("**ACME Corp**");
+  });
+
+  it("normalizes bullet markers (-, *) to •", () => {
+    const sections = [
+      { title: "Skills", content: "- JavaScript\n* Python\n• TypeScript" },
+    ];
+    const html = ReactDOMServer.renderToStaticMarkup(
+      React.createElement(ResumePdf, { sections })
+    );
+    expect(html).toContain("•");
+    expect(html).toContain("JavaScript");
+    expect(html).toContain("Python");
+    expect(html).toContain("TypeScript");
+  });
 });

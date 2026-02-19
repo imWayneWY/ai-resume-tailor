@@ -18,9 +18,9 @@ const SYSTEM_PROMPT = `You are a job description extractor. Given the raw text c
 function getAzureConfig() {
   const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
   const apiKey = process.env.AZURE_OPENAI_API_KEY;
-  const deployment = process.env.AZURE_OPENAI_DEPLOYMENT || "gpt-4.1-mini";
+  const deployment = process.env.AZURE_OPENAI_DEPLOYMENT;
 
-  if (!endpoint || !apiKey) {
+  if (!endpoint || !apiKey || !deployment) {
     return null;
   }
   return { endpoint, apiKey, deployment };
@@ -30,8 +30,8 @@ export async function POST(request: NextRequest) {
   const config = getAzureConfig();
   if (!config) {
     return NextResponse.json(
-      { error: "Azure OpenAI is not configured on this server." },
-      { status: 500 }
+      { error: "Azure OpenAI is not configured. Please contact the administrator." },
+      { status: 503 }
     );
   }
 
@@ -67,6 +67,20 @@ export async function POST(request: NextRequest) {
   if (!["http:", "https:"].includes(parsedUrl.protocol)) {
     return NextResponse.json(
       { error: "Only HTTP and HTTPS URLs are supported." },
+      { status: 400 }
+    );
+  }
+
+  // SSRF protection: block private/internal addresses
+  const hostname = parsedUrl.hostname.toLowerCase();
+  const blockedHosts = ["localhost", "127.0.0.1", "0.0.0.0", "[::1]", "metadata.google.internal"];
+  const blockedPrefixes = ["10.", "172.16.", "172.17.", "172.18.", "172.19.", "172.20.",
+    "172.21.", "172.22.", "172.23.", "172.24.", "172.25.", "172.26.", "172.27.",
+    "172.28.", "172.29.", "172.30.", "172.31.", "192.168.", "169.254."];
+
+  if (blockedHosts.includes(hostname) || blockedPrefixes.some(p => hostname.startsWith(p))) {
+    return NextResponse.json(
+      { error: "URLs pointing to internal or private network addresses are not allowed." },
       { status: 400 }
     );
   }
@@ -135,22 +149,30 @@ export async function POST(request: NextRequest) {
   // Use LLM to extract the job description
   const azureUrl = `${config.endpoint}/openai/deployments/${config.deployment}/chat/completions?api-version=${API_VERSION}`;
 
-  const azureResponse = await fetch(azureUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "api-key": config.apiKey,
-    },
-    body: JSON.stringify({
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: `Extract the job description from this page:\n\n${truncated}` },
-      ],
-      temperature: 0.1,
-      max_tokens: 4000,
-      response_format: { type: "json_object" },
-    }),
-  });
+  let azureResponse: Response;
+  try {
+    azureResponse = await fetch(azureUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "api-key": config.apiKey,
+      },
+      body: JSON.stringify({
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: `Extract the job description from this page:\n\n${truncated}` },
+        ],
+        temperature: 0.1,
+        max_tokens: 4000,
+        response_format: { type: "json_object" },
+      }),
+    });
+  } catch {
+    return NextResponse.json(
+      { error: "Failed to connect to AI service." },
+      { status: 500 }
+    );
+  }
 
   if (!azureResponse.ok) {
     console.debug("[fetch-jd] Azure API error:", azureResponse.status);

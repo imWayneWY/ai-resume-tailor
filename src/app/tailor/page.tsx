@@ -407,7 +407,9 @@ export default function TailorPage() {
 
           {/* JD URL input */}
           <div className="flex gap-2">
+            <label htmlFor="jdUrl" className="sr-only">Job posting URL</label>
             <input
+              id="jdUrl"
               type="url"
               value={jdUrl}
               onChange={(e) => setJdUrl(e.target.value)}

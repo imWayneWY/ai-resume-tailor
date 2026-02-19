@@ -53,6 +53,27 @@ describe("POST /api/fetch-jd", () => {
     expect(json.error).toMatch(/http/i);
   });
 
+  it("blocks localhost URLs (SSRF protection)", async () => {
+    const res = await POST(makeRequest({ url: "http://localhost:6379/secret" }));
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toMatch(/internal|private/i);
+  });
+
+  it("blocks private IP ranges (SSRF protection)", async () => {
+    const res = await POST(makeRequest({ url: "http://192.168.1.1/admin" }));
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toMatch(/internal|private/i);
+  });
+
+  it("blocks cloud metadata endpoints (SSRF protection)", async () => {
+    const res = await POST(makeRequest({ url: "http://169.254.169.254/latest/meta-data/" }));
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toMatch(/internal|private/i);
+  });
+
   it("returns 502 when page fetch fails", async () => {
     mockFetch.mockResolvedValueOnce(
       new Response("Not Found", { status: 404 })
@@ -165,16 +186,18 @@ describe("POST /api/fetch-jd", () => {
     expect(res.status).toBe(502);
   });
 
-  it("returns 500 when Azure is not configured", async () => {
+  it("returns 503 when Azure is not configured", async () => {
     const origEndpoint = process.env.AZURE_OPENAI_ENDPOINT;
-    delete process.env.AZURE_OPENAI_ENDPOINT;
+    try {
+      delete process.env.AZURE_OPENAI_ENDPOINT;
 
-    const res = await POST(makeRequest({ url: "https://example.com/job" }));
-    expect(res.status).toBe(500);
-    const json = await res.json();
-    expect(json.error).toMatch(/not configured/i);
-
-    process.env.AZURE_OPENAI_ENDPOINT = origEndpoint;
+      const res = await POST(makeRequest({ url: "https://example.com/job" }));
+      expect(res.status).toBe(503);
+      const json = await res.json();
+      expect(json.error).toMatch(/not configured/i);
+    } finally {
+      process.env.AZURE_OPENAI_ENDPOINT = origEndpoint;
+    }
   });
 
   it("returns 400 for non-string url", async () => {

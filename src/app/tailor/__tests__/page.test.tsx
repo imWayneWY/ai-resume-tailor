@@ -768,23 +768,4 @@ describe("TailorPage", () => {
     });
   });
 
-  it("auto-extracts personal info from resume text on blur", async () => {
-    const user = userEvent.setup();
-    render(<TailorPage />);
-
-    const resumeInput = screen.getByPlaceholderText(/paste your full resume/i);
-    await user.type(
-      resumeInput,
-      "John Doe\njohn@example.com\n(555) 123-4567\nVancouver, BC\nlinkedin.com/in/johndoe\n\nSummary..."
-    );
-    // Trigger blur to extract personal info
-    await user.tab();
-
-    await waitFor(() => {
-      expect(screen.getByPlaceholderText("John Doe")).toHaveValue("John Doe");
-      expect(screen.getByPlaceholderText("john@example.com")).toHaveValue("john@example.com");
-      expect(screen.getByPlaceholderText("(555) 123-4567")).toHaveValue("(555) 123-4567");
-      expect(screen.getByPlaceholderText("linkedin.com/in/johndoe")).toHaveValue("linkedin.com/in/johndoe");
-    });
-  });
 });

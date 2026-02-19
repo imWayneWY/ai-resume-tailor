@@ -661,4 +661,79 @@ describe("POST /api/tailor", () => {
     const json = await res.json();
     expect(json.jobTitle).toBeUndefined();
   });
+
+  // --- personalInfo in response ---
+  it("returns personalInfo when present in AI response", async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  personalInfo: {
+                    fullName: "Yan Wei",
+                    email: "im.weiyan@foxmail.com",
+                    phone: "587-439-8687",
+                    location: "Langley, BC, Canada",
+                    linkedin: "linkedin.com/in/yan-wei-ca",
+                  },
+                  sections: [
+                    { title: "Summary", content: "Experienced developer" },
+                  ],
+                }),
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+
+    const res = await POST(makeRequest(validBody));
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.personalInfo.fullName).toBe("Yan Wei");
+    expect(json.personalInfo.email).toBe("im.weiyan@foxmail.com");
+    expect(json.personalInfo.location).toBe("Langley, BC, Canada");
+  });
+
+  it("returns 502 when personalInfo has non-string fields", async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  personalInfo: { fullName: 123 },
+                  sections: [
+                    { title: "Summary", content: "Experienced developer" },
+                  ],
+                }),
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+
+    const res = await POST(makeRequest(validBody));
+    expect(res.status).toBe(502);
+  });
+
+  it("succeeds when personalInfo is absent from response", async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify(validAzureResponse), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    const res = await POST(makeRequest(validBody));
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.personalInfo).toBeUndefined();
+  });
 });

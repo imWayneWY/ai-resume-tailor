@@ -70,6 +70,13 @@ Every section of the resume must be actively tailored — not just the summary. 
 Respond with ONLY valid JSON, no markdown fences:
 {
   "jobTitle": "...",
+  "personalInfo": {
+    "fullName": "...",
+    "email": "...",
+    "phone": "...",
+    "location": "...",
+    "linkedin": "..."
+  },
   "sections": [
     { "title": "Summary", "content": "..." },
     { "title": "Skills", "content": "..." },
@@ -80,6 +87,8 @@ Respond with ONLY valid JSON, no markdown fences:
 }
 
 The "jobTitle" field should contain the exact job title extracted from the job description (e.g., "Senior Software Engineer", "Product Manager"). If no clear job title is stated in the job description, omit the "jobTitle" field entirely — do NOT guess or fabricate one.
+
+The "personalInfo" field should be extracted from the RESUME (not the job description). Extract the candidate's full name, email, phone number, city/province/country location (not full street address), and LinkedIn URL. Omit any field that is not clearly present in the resume. For location, use a clean format like "Langley, BC, Canada" — do not include street addresses or unit numbers.
 
 Include all relevant sections. The "content" field should use plain text with newlines for formatting. Use **bold** markers for emphasis (e.g., company names, role titles). For experience entries, use this format:
 **Company Name** — Role Title (Date Range)
@@ -201,7 +210,18 @@ async function callAzureOpenAI(
 }
 
 function parseAndValidateResponse(text: string): NextResponse {
-  let parsed: { jobTitle?: string; sections: { title: string; content: string }[]; coverLetter?: string };
+  let parsed: {
+    jobTitle?: string;
+    personalInfo?: {
+      fullName?: string;
+      email?: string;
+      phone?: string;
+      location?: string;
+      linkedin?: string;
+    };
+    sections: { title: string; content: string }[];
+    coverLetter?: string;
+  };
   try {
     parsed = JSON.parse(text);
   } catch {
@@ -235,7 +255,16 @@ function parseAndValidateResponse(text: string): NextResponse {
     parsed.jobTitle !== undefined &&
     typeof parsed.jobTitle !== "string";
 
-  if (hasInvalidSection || hasInvalidCoverLetter || hasInvalidJobTitle) {
+  // Validate personalInfo: if present, must be an object with optional string fields
+  const hasInvalidPersonalInfo = (() => {
+    if (!("personalInfo" in parsed) || parsed.personalInfo === undefined) return false;
+    if (typeof parsed.personalInfo !== "object" || parsed.personalInfo === null) return true;
+    const info = parsed.personalInfo;
+    const fields = [info.fullName, info.email, info.phone, info.location, info.linkedin];
+    return fields.some((f) => f !== undefined && typeof f !== "string");
+  })();
+
+  if (hasInvalidSection || hasInvalidCoverLetter || hasInvalidJobTitle || hasInvalidPersonalInfo) {
     return NextResponse.json(
       { error: "AI returned invalid resume structure" },
       { status: 502 }

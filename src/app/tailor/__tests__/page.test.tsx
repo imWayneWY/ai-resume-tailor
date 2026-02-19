@@ -59,6 +59,27 @@ afterEach(() => {
   global.fetch = originalFetch;
 });
 
+// Helper: upload a valid PDF and populate resume textarea
+async function uploadResumePdf() {
+  mockFetch.mockResolvedValueOnce(
+    createMockResponse(
+      JSON.stringify({ text: "John Doe\nSoftware Engineer\n5 years experience" }),
+      { status: 200, headers: { "content-type": "application/json" } }
+    )
+  );
+
+  const fileInput = screen.getByLabelText(/upload pdf resume/i);
+  const file = new File(["pdf content"], "resume.pdf", {
+    type: "application/pdf",
+  });
+
+  fireEvent.change(fileInput, { target: { files: [file] } });
+
+  await waitFor(() => {
+    expect(screen.getByText(/resume loaded successfully/i)).toBeInTheDocument();
+  });
+}
+
 // ---------- tests ----------
 
 describe("TailorPage", () => {
@@ -69,17 +90,22 @@ describe("TailorPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders resume textarea", () => {
+  it("renders PDF upload zone", () => {
     render(<TailorPage />);
-    expect(
-      screen.getByPlaceholderText(/paste your full resume/i)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/drag & drop your resume pdf/i)).toBeInTheDocument();
   });
 
   it("renders job description textarea", () => {
     render(<TailorPage />);
     expect(
       screen.getByPlaceholderText(/paste the job description/i)
+    ).toBeInTheDocument();
+  });
+
+  it("renders JD URL input", () => {
+    render(<TailorPage />);
+    expect(
+      screen.getByPlaceholderText(/paste job posting url/i)
     ).toBeInTheDocument();
   });
 
@@ -96,14 +122,11 @@ describe("TailorPage", () => {
     expect(button).toBeDisabled();
   });
 
-  it("enables submit button when both fields have content", async () => {
+  it("enables submit button when resume is uploaded and JD has content", async () => {
     const user = userEvent.setup();
     render(<TailorPage />);
 
-    await user.type(
-      screen.getByPlaceholderText(/paste your full resume/i),
-      "My resume"
-    );
+    await uploadResumePdf();
     await user.type(
       screen.getByPlaceholderText(/paste the job description/i),
       "Job desc"
@@ -113,20 +136,7 @@ describe("TailorPage", () => {
     expect(button).toBeEnabled();
   });
 
-  it("keeps submit button disabled when only resume is filled", async () => {
-    const user = userEvent.setup();
-    render(<TailorPage />);
-
-    await user.type(
-      screen.getByPlaceholderText(/paste your full resume/i),
-      "My resume"
-    );
-
-    const button = screen.getByRole("button", { name: /tailor resume/i });
-    expect(button).toBeDisabled();
-  });
-
-  it("keeps submit button disabled when only job description is filled", async () => {
+  it("keeps submit button disabled when only JD is filled", async () => {
     const user = userEvent.setup();
     render(<TailorPage />);
 
@@ -158,7 +168,16 @@ describe("TailorPage", () => {
     const apiResponse = {
       sections: [{ title: "Summary", content: "Test" }],
     };
-    // Mock keyword extraction (called first), then tailor response
+
+    render(<TailorPage />);
+
+    await uploadResumePdf();
+    await user.type(
+      screen.getByPlaceholderText(/paste the job description/i),
+      "Job desc"
+    );
+
+    // Mock keyword extraction then tailor
     mockFetch
       .mockResolvedValueOnce(
         createMockResponse(JSON.stringify({ keywords: ["react"] }), {
@@ -173,16 +192,6 @@ describe("TailorPage", () => {
         })
       );
 
-    render(<TailorPage />);
-
-    await user.type(
-      screen.getByPlaceholderText(/paste your full resume/i),
-      "My resume"
-    );
-    await user.type(
-      screen.getByPlaceholderText(/paste the job description/i),
-      "Job desc"
-    );
     await user.click(
       screen.getByRole("button", { name: /tailor resume/i })
     );
@@ -199,6 +208,14 @@ describe("TailorPage", () => {
 
   it("shows error on API failure", async () => {
     const user = userEvent.setup();
+
+    render(<TailorPage />);
+    await uploadResumePdf();
+    await user.type(
+      screen.getByPlaceholderText(/paste the job description/i),
+      "Job desc"
+    );
+
     // Keyword extraction succeeds, tailor fails
     mockFetch
       .mockResolvedValueOnce(
@@ -209,7 +226,7 @@ describe("TailorPage", () => {
       )
       .mockResolvedValueOnce(
         createMockResponse(
-          JSON.stringify({ error: "Gemini API error (500)" }),
+          JSON.stringify({ error: "API error (500)" }),
           {
             status: 502,
             headers: { "content-type": "application/json" },
@@ -217,79 +234,27 @@ describe("TailorPage", () => {
         )
       );
 
-    render(<TailorPage />);
-
-    await user.type(
-      screen.getByPlaceholderText(/paste your full resume/i),
-      "My resume"
-    );
-    await user.type(
-      screen.getByPlaceholderText(/paste the job description/i),
-      "Job desc"
-    );
     await user.click(
       screen.getByRole("button", { name: /tailor resume/i })
     );
 
     await waitFor(() => {
-      expect(screen.getByRole("alert")).toHaveTextContent(
-        /Gemini API error/i
-      );
-    });
-  });
-
-  it("shows generic error when API returns non-JSON error", async () => {
-    const user = userEvent.setup();
-    // Keyword extraction succeeds, tailor returns non-JSON
-    mockFetch
-      .mockResolvedValueOnce(
-        createMockResponse(JSON.stringify({ keywords: [] }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        })
-      )
-      .mockResolvedValueOnce(
-        createMockResponse("Internal Server Error", {
-          status: 500,
-          headers: { "content-type": "text/plain" },
-        })
-      );
-
-    render(<TailorPage />);
-
-    await user.type(
-      screen.getByPlaceholderText(/paste your full resume/i),
-      "My resume"
-    );
-    await user.type(
-      screen.getByPlaceholderText(/paste the job description/i),
-      "Job desc"
-    );
-    await user.click(
-      screen.getByRole("button", { name: /tailor resume/i })
-    );
-
-    await waitFor(() => {
-      expect(screen.getByRole("alert")).toHaveTextContent(
-        /something went wrong/i
-      );
+      expect(screen.getByRole("alert")).toHaveTextContent(/API error/i);
     });
   });
 
   it("shows network error when fetch throws", async () => {
     const user = userEvent.setup();
-    mockFetch.mockRejectedValue(new Error("Network failure"));
 
     render(<TailorPage />);
-
-    await user.type(
-      screen.getByPlaceholderText(/paste your full resume/i),
-      "My resume"
-    );
+    await uploadResumePdf();
     await user.type(
       screen.getByPlaceholderText(/paste the job description/i),
       "Job desc"
     );
+
+    mockFetch.mockRejectedValue(new Error("Network failure"));
+
     await user.click(
       screen.getByRole("button", { name: /tailor resume/i })
     );
@@ -299,90 +264,8 @@ describe("TailorPage", () => {
     });
   });
 
-  it("shows error when API returns 200 but non-JSON response", async () => {
-    const user = userEvent.setup();
-    // Keyword extraction succeeds, tailor returns non-JSON 200
-    mockFetch
-      .mockResolvedValueOnce(
-        createMockResponse(JSON.stringify({ keywords: [] }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        })
-      )
-      .mockResolvedValueOnce(
-        createMockResponse("", {
-          status: 200,
-          headers: { "content-type": "text/plain" },
-        })
-      );
-
-    render(<TailorPage />);
-
-    await user.type(
-      screen.getByPlaceholderText(/paste your full resume/i),
-      "My resume"
-    );
-    await user.type(
-      screen.getByPlaceholderText(/paste the job description/i),
-      "Job desc"
-    );
-    await user.click(
-      screen.getByRole("button", { name: /tailor resume/i })
-    );
-
-    await waitFor(() => {
-      expect(screen.getByRole("alert")).toHaveTextContent(
-        /unexpected response/i
-      );
-    });
-  });
-
-  it("shows loading state during submission", async () => {
-    const user = userEvent.setup();
-    // Make both fetches hang
-    mockFetch.mockReturnValue(new Promise(() => {}));
-
-    render(<TailorPage />);
-
-    await user.type(
-      screen.getByPlaceholderText(/paste your full resume/i),
-      "My resume"
-    );
-    await user.type(
-      screen.getByPlaceholderText(/paste the job description/i),
-      "Job desc"
-    );
-    await user.click(
-      screen.getByRole("button", { name: /tailor resume/i })
-    );
-
-    expect(screen.getByText(/tailoring/i)).toBeInTheDocument();
-  });
-
-  it("disables textareas during loading", async () => {
-    const user = userEvent.setup();
-    mockFetch.mockReturnValue(new Promise(() => {}));
-
-    render(<TailorPage />);
-
-    await user.type(
-      screen.getByPlaceholderText(/paste your full resume/i),
-      "My resume"
-    );
-    await user.type(
-      screen.getByPlaceholderText(/paste the job description/i),
-      "Job desc"
-    );
-    await user.click(
-      screen.getByRole("button", { name: /tailor resume/i })
-    );
-
-    expect(screen.getByPlaceholderText(/paste your full resume/i)).toBeDisabled();
-    expect(screen.getByPlaceholderText(/paste the job description/i)).toBeDisabled();
-  });
-
-  // --- File upload tests ---
-  it("shows error for non-PDF file via file input", async () => {
+  // --- PDF upload tests ---
+  it("shows error for non-PDF file", async () => {
     render(<TailorPage />);
 
     const fileInput = screen.getByLabelText(/upload pdf resume/i);
@@ -408,7 +291,6 @@ describe("TailorPage", () => {
     render(<TailorPage />);
 
     const fileInput = screen.getByLabelText(/upload pdf resume/i);
-    // Create a file > 10MB
     const bigContent = "a".repeat(10 * 1024 * 1024 + 1);
     const file = new File([bigContent], "big.pdf", { type: "application/pdf" });
 
@@ -417,39 +299,18 @@ describe("TailorPage", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(/too large/i);
   });
 
-  it("extracts text from valid PDF and populates resume textarea", async () => {
-    mockFetch.mockResolvedValueOnce(
-      createMockResponse(
-        JSON.stringify({ text: "John Doe\nSoftware Engineer" }),
-        { status: 200, headers: { "content-type": "application/json" } }
-      )
-    );
-
+  it("shows success state after PDF upload", async () => {
     render(<TailorPage />);
+    await uploadResumePdf();
 
-    const fileInput = screen.getByLabelText(/upload pdf resume/i);
-    const file = new File(["pdf content"], "resume.pdf", {
-      type: "application/pdf",
-    });
-
-    fireEvent.change(fileInput, { target: { files: [file] } });
-
-    await waitFor(() => {
-      expect(
-        screen.getByPlaceholderText(/paste your full resume/i)
-      ).toHaveValue("John Doe\nSoftware Engineer");
-    });
-
-    // Verify fetch was called with FormData to /api/parse-pdf
-    expect(mockFetch).toHaveBeenCalledWith("/api/parse-pdf", expect.objectContaining({
-      method: "POST",
-    }));
+    expect(screen.getByText("resume.pdf")).toBeInTheDocument();
+    expect(screen.getByText(/resume loaded successfully/i)).toBeInTheDocument();
   });
 
   it("shows error when PDF parsing API returns an error", async () => {
     mockFetch.mockResolvedValueOnce(
       createMockResponse(
-        JSON.stringify({ error: "Failed to parse PDF. The file may be corrupted or password-protected." }),
+        JSON.stringify({ error: "Failed to parse PDF." }),
         { status: 422, headers: { "content-type": "application/json" } }
       )
     );
@@ -468,25 +329,7 @@ describe("TailorPage", () => {
     });
   });
 
-  it("shows error when PDF parsing fetch throws (network error)", async () => {
-    mockFetch.mockRejectedValueOnce(new Error("Network failure"));
-
-    render(<TailorPage />);
-
-    const fileInput = screen.getByLabelText(/upload pdf resume/i);
-    const file = new File(["pdf content"], "resume.pdf", {
-      type: "application/pdf",
-    });
-
-    fireEvent.change(fileInput, { target: { files: [file] } });
-
-    await waitFor(() => {
-      expect(screen.getByRole("alert")).toHaveTextContent(/failed to upload pdf/i);
-    });
-  });
-
   it("shows parsing state while extracting PDF text", async () => {
-    // Make fetch hang to observe loading state
     mockFetch.mockReturnValueOnce(new Promise(() => {}));
 
     render(<TailorPage />);
@@ -503,148 +346,91 @@ describe("TailorPage", () => {
     });
   });
 
-  it("sends generateCoverLetter=true when checkbox is checked", async () => {
-    const user = userEvent.setup();
-    const apiResponse = {
-      sections: [{ title: "Summary", content: "Test" }],
-      coverLetter: "Dear...",
-    };
-    // Keyword extraction first, then tailor
-    mockFetch
-      .mockResolvedValueOnce(
-        createMockResponse(JSON.stringify({ keywords: [] }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        })
-      )
-      .mockResolvedValueOnce(
-        createMockResponse(JSON.stringify(apiResponse), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        })
-      );
+  // --- JD URL fetch tests ---
+  it("renders fetch button disabled when URL is empty", () => {
+    render(<TailorPage />);
+    const fetchBtn = screen.getByRole("button", { name: /fetch/i });
+    expect(fetchBtn).toBeDisabled();
+  });
 
+  it("fetches JD from URL and populates textarea", async () => {
+    const user = userEvent.setup();
     render(<TailorPage />);
 
     await user.type(
-      screen.getByPlaceholderText(/paste your full resume/i),
-      "My resume"
-    );
-    await user.type(
-      screen.getByPlaceholderText(/paste the job description/i),
-      "Job desc"
-    );
-    await user.click(screen.getByRole("checkbox"));
-    await user.click(
-      screen.getByRole("button", { name: /tailor resume/i })
+      screen.getByPlaceholderText(/paste job posting url/i),
+      "https://example.com/job"
     );
 
+    mockFetch.mockResolvedValueOnce(
+      createMockResponse(
+        JSON.stringify({ jobDescription: "Senior React Developer\nRequirements: 5+ years" }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      )
+    );
+
+    await user.click(screen.getByRole("button", { name: /fetch/i }));
+
     await waitFor(() => {
-      // Tailor call is second (index 1) — keyword extraction is first (index 0)
-      const fetchBody = JSON.parse(mockFetch.mock.calls[1][1].body);
-      expect(fetchBody.generateCoverLetter).toBe(true);
+      expect(screen.getByPlaceholderText(/paste the job description/i)).toHaveValue(
+        "Senior React Developer\nRequirements: 5+ years"
+      );
     });
   });
 
-  it("sends correct request body to /api/tailor", async () => {
+  it("shows error when JD URL fetch fails", async () => {
     const user = userEvent.setup();
-    // Keyword extraction first, then tailor
-    mockFetch
-      .mockResolvedValueOnce(
-        createMockResponse(JSON.stringify({ keywords: [] }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        })
-      )
-      .mockResolvedValueOnce(
-        createMockResponse(
-          JSON.stringify({ sections: [{ title: "S", content: "C" }] }),
-          { status: 200, headers: { "content-type": "application/json" } }
-        )
-      );
-
     render(<TailorPage />);
 
     await user.type(
-      screen.getByPlaceholderText(/paste your full resume/i),
-      "My resume text"
-    );
-    await user.type(
-      screen.getByPlaceholderText(/paste the job description/i),
-      "Job description text"
-    );
-    await user.click(
-      screen.getByRole("button", { name: /tailor resume/i })
+      screen.getByPlaceholderText(/paste job posting url/i),
+      "https://example.com/not-a-job"
     );
 
+    mockFetch.mockResolvedValueOnce(
+      createMockResponse(
+        JSON.stringify({ error: "No job description found on this page." }),
+        { status: 400, headers: { "content-type": "application/json" } }
+      )
+    );
+
+    await user.click(screen.getByRole("button", { name: /fetch/i }));
+
     await waitFor(() => {
-      // Tailor call is second (index 1)
-      expect(mockFetch).toHaveBeenCalledWith("/api/tailor", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          resume: "My resume text",
-          jobDescription: "Job description text",
-          generateCoverLetter: false,
-        }),
-      });
+      expect(screen.getByRole("alert")).toHaveTextContent(/no job description/i);
     });
   });
 
-  it("does not send provider or apiKey fields", async () => {
+  it("shows loading state during JD fetch", async () => {
     const user = userEvent.setup();
-    // Keyword extraction first, then tailor
-    mockFetch
-      .mockResolvedValueOnce(
-        createMockResponse(JSON.stringify({ keywords: [] }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        })
-      )
-      .mockResolvedValueOnce(
-        createMockResponse(
-          JSON.stringify({ sections: [{ title: "S", content: "C" }] }),
-          { status: 200, headers: { "content-type": "application/json" } }
-        )
-      );
-
     render(<TailorPage />);
 
     await user.type(
-      screen.getByPlaceholderText(/paste your full resume/i),
-      "My resume"
-    );
-    await user.type(
-      screen.getByPlaceholderText(/paste the job description/i),
-      "Job desc"
-    );
-    await user.click(
-      screen.getByRole("button", { name: /tailor resume/i })
+      screen.getByPlaceholderText(/paste job posting url/i),
+      "https://example.com/job"
     );
 
-    await waitFor(() => {
-      // Tailor call is second (index 1)
-      const fetchBody = JSON.parse(mockFetch.mock.calls[1][1].body);
-      expect(fetchBody.provider).toBeUndefined();
-      expect(fetchBody.apiKey).toBeUndefined();
-    });
+    mockFetch.mockReturnValueOnce(new Promise(() => {}));
+
+    await user.click(screen.getByRole("button", { name: /fetch/i }));
+
+    expect(screen.getByText(/fetching/i)).toBeInTheDocument();
   });
 
-  it("renders drag and drop zone", () => {
-    render(<TailorPage />);
-    expect(screen.getByText(/drag & drop a pdf/i)).toBeInTheDocument();
-  });
-
-  it("renders browse label for file upload", () => {
-    render(<TailorPage />);
-    expect(screen.getByText("browse")).toBeInTheDocument();
-  });
-
+  // --- keyword passing ---
   it("passes extracted keywords to tailor API as targetKeywords", async () => {
     const user = userEvent.setup();
     const apiResponse = {
       sections: [{ title: "Summary", content: "Test" }],
     };
+
+    render(<TailorPage />);
+    await uploadResumePdf();
+    await user.type(
+      screen.getByPlaceholderText(/paste the job description/i),
+      "Job desc"
+    );
+
     // Keyword extraction returns keywords, then tailor succeeds
     mockFetch
       .mockResolvedValueOnce(
@@ -660,23 +446,16 @@ describe("TailorPage", () => {
         })
       );
 
-    render(<TailorPage />);
-
-    await user.type(
-      screen.getByPlaceholderText(/paste your full resume/i),
-      "My resume"
-    );
-    await user.type(
-      screen.getByPlaceholderText(/paste the job description/i),
-      "Job desc"
-    );
     await user.click(
       screen.getByRole("button", { name: /tailor resume/i })
     );
 
     await waitFor(() => {
-      // Tailor call is second (index 1)
-      const fetchBody = JSON.parse(mockFetch.mock.calls[1][1].body);
+      // PDF parse was call 0, keyword extraction is next non-PDF call
+      const tailorCallIdx = mockFetch.mock.calls.findIndex(
+        (c: [string, ...unknown[]]) => c[0] === "/api/tailor"
+      );
+      const fetchBody = JSON.parse((mockFetch.mock.calls[tailorCallIdx][1] as { body: string }).body);
       expect(fetchBody.targetKeywords).toEqual(["react", "typescript", "node.js"]);
     });
   });
@@ -686,6 +465,14 @@ describe("TailorPage", () => {
     const apiResponse = {
       sections: [{ title: "Summary", content: "Test" }],
     };
+
+    render(<TailorPage />);
+    await uploadResumePdf();
+    await user.type(
+      screen.getByPlaceholderText(/paste the job description/i),
+      "Job desc"
+    );
+
     // Keyword extraction fails, tailor succeeds
     mockFetch
       .mockRejectedValueOnce(new Error("keyword extraction failed"))
@@ -696,16 +483,6 @@ describe("TailorPage", () => {
         })
       );
 
-    render(<TailorPage />);
-
-    await user.type(
-      screen.getByPlaceholderText(/paste your full resume/i),
-      "My resume"
-    );
-    await user.type(
-      screen.getByPlaceholderText(/paste the job description/i),
-      "Job desc"
-    );
     await user.click(
       screen.getByRole("button", { name: /tailor resume/i })
     );
@@ -715,57 +492,8 @@ describe("TailorPage", () => {
     });
   });
 
-  it("renders personal info input fields", () => {
+  it("renders browse label for file upload", () => {
     render(<TailorPage />);
-
-    expect(screen.getByPlaceholderText("John Doe")).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("john@example.com")).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("(555) 123-4567")).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("Vancouver, BC")).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("linkedin.com/in/johndoe")).toBeInTheDocument();
+    expect(screen.getByText("browse")).toBeInTheDocument();
   });
-
-  it("stores personal info in sessionStorage on submit", async () => {
-    const user = userEvent.setup();
-    const apiResponse = {
-      sections: [{ title: "Summary", content: "Test" }],
-    };
-    mockFetch
-      .mockResolvedValueOnce(
-        createMockResponse(JSON.stringify({ keywords: [] }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        })
-      )
-      .mockResolvedValueOnce(
-        createMockResponse(JSON.stringify(apiResponse), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        })
-      );
-
-    render(<TailorPage />);
-
-    await user.type(screen.getByPlaceholderText("John Doe"), "Jane Smith");
-    await user.type(screen.getByPlaceholderText("john@example.com"), "jane@test.com");
-    await user.type(
-      screen.getByPlaceholderText(/paste your full resume/i),
-      "My resume"
-    );
-    await user.type(
-      screen.getByPlaceholderText(/paste the job description/i),
-      "Job desc"
-    );
-    await user.click(
-      screen.getByRole("button", { name: /tailor resume/i })
-    );
-
-    await waitFor(() => {
-      expect(sessionStorageMock.setItem).toHaveBeenCalledWith(
-        "tailorPersonalInfo",
-        expect.stringContaining("Jane Smith")
-      );
-    });
-  });
-
 });

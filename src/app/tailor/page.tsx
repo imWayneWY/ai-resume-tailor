@@ -1,14 +1,14 @@
 "use client";
 
 import type React from "react";
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 /**
  * Extract personal info (name, email, phone, location, linkedin) from resume text.
- * Only extracts from the first ~10 lines (header area).
+ * Only extracts from the first ~15 lines (header area).
  */
 function extractPersonalInfo(text: string) {
   const headerLines = text.split("\n").slice(0, 15).join("\n");

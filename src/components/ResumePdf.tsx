@@ -110,7 +110,7 @@ const styles = StyleSheet.create({
  * Parse inline **bold** markers into mixed Text spans.
  */
 function renderInlineMarkdown(text: string) {
-  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  const parts = text.split(/(\*\*.*?\*\*)/g);
   if (parts.length === 1) return text;
   return parts.map((part, i) => {
     if (part.startsWith("**") && part.endsWith("**")) {
@@ -129,7 +129,7 @@ function renderContent(content: string) {
   return lines.map((line, i) => {
     const trimmed = line.trim();
     // Bullet lines: •, -, or *
-    if (/^[•\-*]\s/.test(trimmed)) {
+    if (/^[•\-*]\s+/.test(trimmed)) {
       const bulletText = trimmed.replace(/^[•\-*]\s+/, "");
       return (
         <Text key={i} style={styles.bulletLine}>

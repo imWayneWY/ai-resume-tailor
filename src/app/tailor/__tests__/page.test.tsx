@@ -102,13 +102,6 @@ describe("TailorPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders JD URL input", () => {
-    render(<TailorPage />);
-    expect(
-      screen.getByPlaceholderText(/paste job posting url/i)
-    ).toBeInTheDocument();
-  });
-
   it("renders cover letter checkbox (unchecked by default)", () => {
     render(<TailorPage />);
     const checkbox = screen.getByRole("checkbox");
@@ -344,77 +337,6 @@ describe("TailorPage", () => {
     await waitFor(() => {
       expect(screen.getByText(/extracting text from pdf/i)).toBeInTheDocument();
     });
-  });
-
-  // --- JD URL fetch tests ---
-  it("renders fetch button disabled when URL is empty", () => {
-    render(<TailorPage />);
-    const fetchBtn = screen.getByRole("button", { name: /fetch/i });
-    expect(fetchBtn).toBeDisabled();
-  });
-
-  it("fetches JD from URL and populates textarea", async () => {
-    const user = userEvent.setup();
-    render(<TailorPage />);
-
-    await user.type(
-      screen.getByPlaceholderText(/paste job posting url/i),
-      "https://example.com/job"
-    );
-
-    mockFetch.mockResolvedValueOnce(
-      createMockResponse(
-        JSON.stringify({ jobDescription: "Senior React Developer\nRequirements: 5+ years" }),
-        { status: 200, headers: { "content-type": "application/json" } }
-      )
-    );
-
-    await user.click(screen.getByRole("button", { name: /fetch/i }));
-
-    await waitFor(() => {
-      expect(screen.getByPlaceholderText(/paste the job description/i)).toHaveValue(
-        "Senior React Developer\nRequirements: 5+ years"
-      );
-    });
-  });
-
-  it("shows error when JD URL fetch fails", async () => {
-    const user = userEvent.setup();
-    render(<TailorPage />);
-
-    await user.type(
-      screen.getByPlaceholderText(/paste job posting url/i),
-      "https://example.com/not-a-job"
-    );
-
-    mockFetch.mockResolvedValueOnce(
-      createMockResponse(
-        JSON.stringify({ error: "No job description found on this page." }),
-        { status: 400, headers: { "content-type": "application/json" } }
-      )
-    );
-
-    await user.click(screen.getByRole("button", { name: /fetch/i }));
-
-    await waitFor(() => {
-      expect(screen.getByRole("alert")).toHaveTextContent(/no job description/i);
-    });
-  });
-
-  it("shows loading state during JD fetch", async () => {
-    const user = userEvent.setup();
-    render(<TailorPage />);
-
-    await user.type(
-      screen.getByPlaceholderText(/paste job posting url/i),
-      "https://example.com/job"
-    );
-
-    mockFetch.mockReturnValueOnce(new Promise(() => {}));
-
-    await user.click(screen.getByRole("button", { name: /fetch/i }));
-
-    expect(screen.getByText(/fetching/i)).toBeInTheDocument();
   });
 
   // --- keyword passing ---

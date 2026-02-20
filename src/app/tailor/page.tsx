@@ -19,11 +19,6 @@ export default function TailorPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [fileName, setFileName] = useState("");
 
-  // JD URL fetch
-  const [jdUrl, setJdUrl] = useState("");
-  const [isFetchingJd, setIsFetchingJd] = useState(false);
-  const [jdFetchError, setJdFetchError] = useState("");
-
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(true);
@@ -126,52 +121,6 @@ export default function TailorPage() {
     },
     [processFile]
   );
-
-  const handleFetchJd = async () => {
-    const trimmedUrl = jdUrl.trim();
-    if (!trimmedUrl) return;
-
-    setJdFetchError("");
-    setIsFetchingJd(true);
-
-    try {
-      const response = await fetch("/api/fetch-jd", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: trimmedUrl }),
-      });
-
-      const contentType = response.headers.get("content-type") || "";
-      const text = await response.text();
-
-      let data: Record<string, unknown> | null = null;
-      if (contentType.includes("application/json") && text) {
-        try {
-          data = JSON.parse(text);
-        } catch {
-          // JSON parsing failed
-        }
-      }
-
-      if (!response.ok) {
-        const errorMessage =
-          (data && typeof data.error === "string" && data.error) ||
-          "Failed to fetch job description from URL.";
-        setJdFetchError(errorMessage);
-        return;
-      }
-
-      if (data && typeof data.jobDescription === "string" && data.jobDescription.length > 0) {
-        setJobDescription(data.jobDescription);
-      } else {
-        setJdFetchError("No job description could be extracted from this URL.");
-      }
-    } catch {
-      setJdFetchError("Network error — please check the URL and try again.");
-    } finally {
-      setIsFetchingJd(false);
-    }
-  };
 
   const handleSubmit = async () => {
     setApiError("");
@@ -405,63 +354,11 @@ export default function TailorPage() {
             Job Description
           </label>
 
-          {/* JD URL input */}
-          <div className="flex gap-2">
-            <label htmlFor="jdUrl" className="sr-only">Job posting URL</label>
-            <input
-              id="jdUrl"
-              type="url"
-              value={jdUrl}
-              onChange={(e) => setJdUrl(e.target.value)}
-              placeholder="Paste job posting URL to auto-fill..."
-              disabled={isLoading || isFetchingJd}
-              className="flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none disabled:opacity-50"
-            />
-            <button
-              onClick={handleFetchJd}
-              disabled={!jdUrl.trim() || isLoading || isFetchingJd}
-              className="flex items-center gap-1.5 rounded-lg bg-accent/10 px-3 py-2 text-sm font-medium text-accent transition-colors hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {isFetchingJd ? (
-                <>
-                  <svg
-                    className="h-4 w-4 animate-spin"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    aria-hidden="true"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                    />
-                  </svg>
-                  Fetching…
-                </>
-              ) : (
-                "Fetch"
-              )}
-            </button>
-          </div>
-          {jdFetchError && (
-            <p role="alert" className="text-sm text-red-600">
-              {jdFetchError}
-            </p>
-          )}
-
           <textarea
             id="jobDescription"
             value={jobDescription}
             onChange={(e) => setJobDescription(e.target.value)}
-            placeholder="Or paste the job description here..."
+            placeholder="Paste the job description here..."
             disabled={isLoading}
             className="h-64 resize-y rounded-lg border border-border bg-white p-4 text-sm leading-relaxed placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none disabled:opacity-50"
           />

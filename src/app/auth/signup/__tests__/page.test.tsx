@@ -1,14 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import SignupPage from "../page";
 
-// Mock next/navigation
-const mockPush = jest.fn();
-jest.mock("next/navigation", () => ({
-  useRouter: () => ({
-    push: mockPush,
-    refresh: jest.fn(),
-  }),
-}));
+// Mock next/navigation (not used by SignupPage but may be needed by dependencies)
+jest.mock("next/navigation", () => ({}));
 
 // Mock Supabase client
 const mockSignUp = jest.fn();

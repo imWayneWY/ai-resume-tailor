@@ -1,14 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { User } from "@supabase/supabase-js";
 
 export function Navbar() {
   const pathname = usePathname();
-  const router = useRouter();
   const isTailorPage = pathname.startsWith("/tailor");
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -16,10 +15,22 @@ export function Navbar() {
   useEffect(() => {
     const supabase = createClient();
 
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setUser(user);
-      setLoading(false);
-    });
+    (async () => {
+      try {
+        const { data, error } = await supabase.auth.getUser();
+        if (error) {
+          console.error("Error fetching user:", error);
+          setUser(null);
+        } else {
+          setUser(data.user);
+        }
+      } catch (err) {
+        console.error("Unexpected error fetching user:", err);
+        setUser(null);
+      } finally {
+        setLoading(false);
+      }
+    })();
 
     const {
       data: { subscription },
@@ -83,12 +94,14 @@ export function Navbar() {
                   <span className="hidden text-sm text-muted sm:inline">
                     {getUserDisplayName(user)}
                   </span>
-                  <a
-                    href="/auth/signout"
-                    className="text-sm font-medium text-muted transition-colors hover:text-foreground"
-                  >
-                    Sign out
-                  </a>
+                  <form action="/auth/signout" method="POST" className="inline">
+                    <button
+                      type="submit"
+                      className="text-sm font-medium text-muted transition-colors hover:text-foreground"
+                    >
+                      Sign out
+                    </button>
+                  </form>
                   {!isTailorPage && (
                     <Link
                       href="/tailor"

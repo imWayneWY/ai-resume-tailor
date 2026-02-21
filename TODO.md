@@ -3,11 +3,14 @@
 ## 🐧 [Linus] SaaS Buildout
 
 ### High-Level Design
-- **Credits system** (not subscription): $1 = 1 credit, 1 credit = 1 tailor + download
+- **Credits system** (not subscription): 1 credit = 1 tailor + download
 - **Auth required** for credit storage and usage tracking
-- **Free tier**: X free credits to try (TBD — maybe 3?)
-- **Pricing bundles**: TBD (flat vs bundles vs freemium)
+- **Free tier**: 1 free credit on signup
+- **No-login preview**: Real score improvement shown, but resume text is redacted (server-side gibberish + client-side blur). Network-safe — even inspecting response shows nothing useful.
+- **Pricing bundles**: 5 for $5 / 12 for $10 / 30 for $20
 - **Payment**: Stripe one-time purchases, webhook to add credits
+- **Fixed costs**: ~$21/mo (Vercel Pro $20 + domain $1, Supabase free tier)
+- **LLM cost**: ~$0.001/request (GPT-4.1-nano) — negligible even with freeloaders
 
 ### Phase 1: Auth
 - [ ] Add NextAuth.js with Google + GitHub providers
@@ -17,15 +20,16 @@
 
 ### Phase 2: Credit System
 - [ ] Credits table: user_id, balance, created_at, updated_at
-- [ ] Give free credits on signup
+- [ ] Give 1 free credit on signup
 - [ ] Deduct 1 credit per tailor request
 - [ ] Show credit balance in header/nav
 - [ ] Block tailor if 0 credits (with "buy more" CTA)
 - [ ] Usage history table: user_id, timestamp, jd_title, credits_used
+- [ ] **No-login preview**: server-side redaction (replace words with gibberish, keep format/word count) + client-side blur overlay with "Sign up to unlock"
 
 ### Phase 3: Stripe Integration
 - [ ] Stripe Checkout for one-time credit purchases
-- [ ] Credit packages (e.g., 1 for $1, 5 for $4, 10 for $7 — TBD)
+- [ ] Credit packages: 5 for $5, 12 for $10, 30 for $20
 - [ ] Webhook endpoint to add credits after successful payment
 - [ ] Payment history / receipts
 

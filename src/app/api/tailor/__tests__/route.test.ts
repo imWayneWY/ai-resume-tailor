@@ -11,12 +11,15 @@ const mockGetUser = jest.fn().mockResolvedValue({
   error: null,
 });
 
+const mockRpc = jest.fn().mockResolvedValue({ data: true, error: null });
+
 jest.mock("@/lib/supabase/server", () => ({
   createClient: jest.fn().mockImplementation(() =>
     Promise.resolve({
       auth: {
         getUser: mockGetUser,
       },
+      rpc: mockRpc,
     })
   ),
 }));
@@ -73,6 +76,8 @@ beforeEach(() => {
     data: { user: { id: "test-user-123" } },
     error: null,
   });
+  mockRpc.mockClear();
+  mockRpc.mockResolvedValue({ data: true, error: null });
   process.env.AZURE_OPENAI_ENDPOINT = "https://test-resource.openai.azure.com";
   process.env.AZURE_OPENAI_API_KEY = "test-azure-key";
   process.env.AZURE_OPENAI_DEPLOYMENT = "gpt-4.1-mini";
@@ -894,5 +899,94 @@ describe("POST /api/tailor", () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.redacted).toBe(true);
+  });
+
+  // --- Credit deduction ---
+  it("deducts 1 credit for authenticated users on successful tailor", async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify(validAzureResponse), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    await POST(makeRequest(validBody));
+
+    expect(mockRpc).toHaveBeenCalledWith("deduct_credit", {
+      p_jd_snippet: expect.any(String),
+    });
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns 402 when authenticated user has no credits", async () => {
+    mockRpc.mockResolvedValueOnce({ data: false, error: null });
+
+    const res = await POST(makeRequest(validBody));
+    expect(res.status).toBe(402);
+    const json = await res.json();
+    expect(json.code).toBe("NO_CREDITS");
+    // Ensure no expensive LLM call is made when user has no credits
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("returns 500 when credit deduction has database error", async () => {
+    mockRpc.mockResolvedValueOnce({
+      data: null,
+      error: { message: "DB connection failed" },
+    });
+
+    const res = await POST(makeRequest(validBody));
+    expect(res.status).toBe(500);
+    const json = await res.json();
+    expect(json.error).toMatch(/credits/i);
+  });
+
+  it("does not deduct credits for unauthenticated users", async () => {
+    mockGetUser.mockResolvedValueOnce({
+      data: { user: null },
+      error: null,
+    });
+
+    mockFetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  sections: [
+                    { title: "Summary", content: "Experienced developer" },
+                  ],
+                }),
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+
+    await POST(makeRequest(validBody));
+
+    // rpc should NOT have been called — unauthenticated users don't spend credits
+    expect(mockRpc).not.toHaveBeenCalled();
+  });
+
+  it("passes JD snippet (first 100 chars) to credit deduction", async () => {
+    const longJD = "A".repeat(200);
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify(validAzureResponse), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    await POST(
+      makeRequest({ ...validBody, jobDescription: longJD })
+    );
+
+    expect(mockRpc).toHaveBeenCalledWith("deduct_credit", {
+      p_jd_snippet: "A".repeat(100),
+    });
   });
 });

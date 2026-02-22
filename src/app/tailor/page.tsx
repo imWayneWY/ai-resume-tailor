@@ -177,7 +177,13 @@ export default function TailorPage() {
         const errorMessage =
           (data && typeof data.error === "string" && data.error) ||
           "Something went wrong. Please try again.";
-        setApiError(errorMessage);
+        const errorCode = data && typeof data.code === "string" ? data.code : null;
+
+        if (errorCode === "NO_CREDITS") {
+          setApiError("You're out of credits! More credits coming soon — stay tuned.");
+        } else {
+          setApiError(errorMessage);
+        }
         return;
       }
 
@@ -197,6 +203,9 @@ export default function TailorPage() {
           JSON.stringify(extractedKeywords)
         );
       }
+
+      // Signal Navbar to refresh credits balance
+      window.dispatchEvent(new Event("credits-updated"));
 
       router.push("/tailor/result");
     } catch {

@@ -10,6 +10,7 @@ export function Navbar() {
   const pathname = usePathname();
   const isTailorPage = pathname.startsWith("/tailor");
   const [user, setUser] = useState<User | null>(null);
+  const [credits, setCredits] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -40,6 +41,34 @@ export function Navbar() {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // Fetch credits when user is authenticated
+  useEffect(() => {
+    if (!user) {
+      setCredits(null);
+      return;
+    }
+
+    const fetchCredits = async () => {
+      try {
+        const res = await fetch("/api/credits");
+        if (res.ok) {
+          const data = await res.json();
+          setCredits(data.balance ?? 0);
+        }
+      } catch {
+        // Silently fail — credits display is non-critical
+      }
+    };
+
+    fetchCredits();
+
+    // Re-fetch when tailor page signals a credit was used
+    const handleCreditsUpdated = () => fetchCredits();
+    window.addEventListener("credits-updated", handleCreditsUpdated);
+
+    return () => window.removeEventListener("credits-updated", handleCreditsUpdated);
+  }, [user]);
 
   function getUserDisplayName(user: User): string {
     return (
@@ -94,6 +123,18 @@ export function Navbar() {
                   <span className="hidden text-sm text-muted sm:inline">
                     {getUserDisplayName(user)}
                   </span>
+                  {credits !== null && (
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                        credits > 0
+                          ? "bg-accent/10 text-accent"
+                          : "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400"
+                      }`}
+                      title={`${credits} credit${credits !== 1 ? "s" : ""} remaining`}
+                    >
+                      {credits} credit{credits !== 1 ? "s" : ""}
+                    </span>
+                  )}
                   <form action="/auth/signout" method="POST" className="inline">
                     <button
                       type="submit"

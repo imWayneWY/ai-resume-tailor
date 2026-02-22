@@ -3,11 +3,13 @@ import LoginPage from "../page";
 
 // Mock next/navigation
 const mockPush = jest.fn();
+const mockSearchParams = new URLSearchParams();
 jest.mock("next/navigation", () => ({
   useRouter: () => ({
     push: mockPush,
     refresh: jest.fn(),
   }),
+  useSearchParams: () => mockSearchParams,
 }));
 
 // Mock Supabase client
@@ -61,5 +63,13 @@ describe("LoginPage", () => {
 
     expect(screen.getByLabelText(/email/i)).toBeRequired();
     expect(screen.getByLabelText(/password/i)).toBeRequired();
+  });
+
+  it("displays error message from URL error param", () => {
+    mockSearchParams.set("error", "auth_callback_failed");
+    render(<LoginPage />);
+
+    expect(screen.getByText(/sign-in failed/i)).toBeInTheDocument();
+    mockSearchParams.delete("error");
   });
 });

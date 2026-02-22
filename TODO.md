@@ -12,11 +12,11 @@
 - **Fixed costs**: ~$21/mo (Vercel Pro $20 + domain $1, Supabase free tier)
 - **LLM cost**: ~$0.001/request (GPT-4.1-nano) — negligible even with freeloaders
 
-### Phase 1: Auth
-- [ ] Add NextAuth.js with Google + GitHub providers
-- [ ] Set up database (Supabase / Neon / Vercel Postgres — TBD)
-- [ ] User table: id, email, name, provider, created_at
-- [ ] Session handling + protected routes
+### Phase 1: Auth ✅
+- [x] Add Supabase Auth with Google OAuth (Facebook deferred — see Issue #36)
+- [x] Database: Supabase (managed Postgres, free tier)
+- [x] User management via Supabase Auth (id, email, name, provider, created_at)
+- [x] Session handling via middleware + protected routes ready
 
 ### Phase 2: Credit System
 - [ ] Credits table: user_id, balance, created_at, updated_at

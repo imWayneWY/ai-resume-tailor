@@ -3,12 +3,21 @@
 import { useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+
+const URL_ERROR_MESSAGES: Record<string, string> = {
+  auth_callback_failed:
+    "Sign-in failed. Please try again or use a different method.",
+};
 
 export default function LoginPage() {
+  const searchParams = useSearchParams();
+  const urlError = searchParams.get("error");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(
+    urlError ? (URL_ERROR_MESSAGES[urlError] ?? "An unexpected error occurred. Please try again.") : null
+  );
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);

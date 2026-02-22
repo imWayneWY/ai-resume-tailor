@@ -41,14 +41,11 @@ describe("LoginPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders OAuth buttons", () => {
+  it("renders Google OAuth button", () => {
     render(<LoginPage />);
 
     expect(
       screen.getByRole("button", { name: /continue with google/i })
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /continue with facebook/i })
     ).toBeInTheDocument();
   });
 

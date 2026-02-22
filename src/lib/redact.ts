@@ -3,7 +3,7 @@
  * Preserves formatting: line breaks, bullet points, indentation, and punctuation structure.
  */
 
-// Deterministic-ish gibberish from a seeded char pool
+// Random gibberish from a char pool (non-deterministic — fine since content is blurred anyway)
 const CONSONANTS = "bcdfghjklmnpqrstvwxyz";
 const VOWELS = "aeiou";
 
@@ -20,13 +20,22 @@ function gibberishWord(length: number): string {
 
 export function redactText(text: string): string {
   // Replace each word while preserving whitespace, punctuation, and structure
+  // The regex matches compound words (hyphenated, contractions, slash-separated)
   return text.replace(/[a-zA-Z]+(?:[''/-][a-zA-Z]+)*/g, (match) => {
-    // Preserve the case pattern of the first character
-    const replacement = gibberishWord(match.length);
-    if (match[0] === match[0].toUpperCase()) {
-      return replacement.charAt(0).toUpperCase() + replacement.slice(1);
-    }
-    return replacement;
+    // Split on internal separators to preserve them (e.g., "self-taught" → ["self", "-", "taught"])
+    const parts = match.split(/([''/-])/);
+    return parts
+      .map((part) => {
+        // Preserve separators as-is
+        if (/^[''/-]$/.test(part)) return part;
+        // Replace each word part with gibberish, preserving first-char case
+        const replacement = gibberishWord(part.length);
+        if (part[0] === part[0].toUpperCase()) {
+          return replacement.charAt(0).toUpperCase() + replacement.slice(1);
+        }
+        return replacement;
+      })
+      .join("");
   });
 }
 
@@ -60,7 +69,12 @@ export function redactPersonalInfo(info: {
 } {
   return {
     fullName: info.fullName ? redactText(info.fullName) : info.fullName,
-    email: info.email ? `${gibberishWord(6)}@${gibberishWord(5)}.com` : info.email,
+    email: info.email
+      ? (() => {
+          const tld = info.email.split(".").pop() || "com";
+          return `${gibberishWord(6)}@${gibberishWord(5)}.${tld}`;
+        })()
+      : info.email,
     phone: info.phone ? "***-***-****" : info.phone,
     location: info.location ? redactText(info.location) : info.location,
     linkedin: info.linkedin ? "linkedin.com/in/********" : info.linkedin,

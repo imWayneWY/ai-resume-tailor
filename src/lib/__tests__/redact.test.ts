@@ -51,6 +51,37 @@ describe("redactText", () => {
     const result = redactText(input);
     expect(result).toContain("•");
   });
+
+  it("handles hyphenated words as single tokens", () => {
+    const input = "self-taught full-stack developer";
+    const result = redactText(input);
+    // Hyphens should be preserved; each hyphenated word treated as one match
+    const words = result.split(" ");
+    expect(words).toHaveLength(3);
+    expect(words[0]).toContain("-");
+    expect(words[1]).toContain("-");
+  });
+
+  it("handles contractions", () => {
+    const input = "don't I'm won't";
+    const result = redactText(input);
+    // Apostrophes should be preserved within words
+    const words = result.split(" ");
+    expect(words).toHaveLength(3);
+    // Each word should contain an apostrophe
+    expect(words[0]).toMatch(/'/);
+    expect(words[1]).toMatch(/'/);
+  });
+
+  it("handles slash-separated words (e.g., CI/CD)", () => {
+    const input = "CI/CD and/or frontend/backend";
+    const result = redactText(input);
+    // Slashes connect words into single tokens
+    const words = result.split(" ");
+    expect(words).toHaveLength(3);
+    expect(words[0]).toContain("/");
+    expect(words[2]).toContain("/");
+  });
 });
 
 describe("redactSections", () => {
@@ -92,5 +123,18 @@ describe("redactPersonalInfo", () => {
     expect(result.fullName).not.toBe("Test User");
     expect(result.email).toBeUndefined();
     expect(result.phone).toBeUndefined();
+  });
+
+  it("preserves original email TLD", () => {
+    const info = { email: "user@company.io" };
+    const result = redactPersonalInfo(info);
+    expect(result.email).toMatch(/\.io$/);
+    expect(result.email).toContain("@");
+  });
+
+  it("preserves .edu TLD in email", () => {
+    const info = { email: "student@university.edu" };
+    const result = redactPersonalInfo(info);
+    expect(result.email).toMatch(/\.edu$/);
   });
 });

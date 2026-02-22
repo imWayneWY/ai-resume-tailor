@@ -361,6 +361,7 @@ export async function POST(request: NextRequest) {
       personalInfo: result.personalInfo
         ? redactPersonalInfo(result.personalInfo)
         : result.personalInfo,
+      // jobTitle intentionally NOT redacted — it comes from the JD (which the user provided), not the resume
       coverLetter: undefined, // Don't show cover letter at all
       redacted: true,
     };

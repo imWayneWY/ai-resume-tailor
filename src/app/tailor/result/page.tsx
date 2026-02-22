@@ -127,8 +127,10 @@ export default function ResultPage() {
   }, []);
 
   // Persist edits to sessionStorage so changes survive navigation
+  // Skip for redacted results — no point persisting gibberish
   useEffect(() => {
     if (editableSections.length === 0) return;
+    if (result?.redacted) return;
     const stored = sessionStorage.getItem("tailorResult");
     if (!stored) return;
     try {
@@ -267,10 +269,10 @@ export default function ResultPage() {
           <div className="relative rounded-lg border border-border bg-white p-6 shadow-sm sm:p-8">
             {/* Blur overlay for redacted content */}
             {result.redacted && (
-              <div className="pointer-events-none absolute inset-0 z-10 rounded-lg backdrop-blur-sm" />
+              <div className="pointer-events-none absolute inset-0 z-10 rounded-lg backdrop-blur-sm" aria-hidden="true" />
             )}
             {result.redacted && (
-              <div className="absolute inset-0 z-20 flex items-center justify-center rounded-lg">
+              <div className="absolute inset-0 z-20 flex items-center justify-center rounded-lg" role="dialog" aria-label="Sign up to unlock resume">
                 <div className="pointer-events-auto rounded-xl bg-white/95 px-8 py-6 text-center shadow-lg">
                   <div className="mb-3 text-3xl">🔒</div>
                   <h3 className="text-lg font-semibold">
@@ -299,6 +301,8 @@ export default function ResultPage() {
               </div>
             )}
             {/* Personal info header */}
+            {/* Resume content — hidden from screen readers when redacted (gibberish text) */}
+            <div aria-hidden={result.redacted || undefined}>
             {(() => {
               const contactParts = [personalInfo.email, personalInfo.phone, personalInfo.location, personalInfo.linkedin].filter(Boolean);
               const hasAnyHeader = personalInfo.fullName || jobTitle || contactParts.length > 0;
@@ -333,6 +337,7 @@ export default function ResultPage() {
                 </div>
               </div>
             ))}
+            </div>
           </div>
         </div>
 

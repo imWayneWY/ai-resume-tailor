@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cleanSections, cleanAiPhrases } from "@/lib/ai-phrase-cleaner";
+import { redactSections, redactPersonalInfo } from "@/lib/redact";
+import { createClient } from "@/lib/supabase/server";
 
 const API_VERSION = "2025-01-01-preview";
 
@@ -165,7 +167,7 @@ async function callAzureOpenAI(
   apiKey: string,
   deployment: string,
   userPrompt: string
-): Promise<NextResponse> {
+): Promise<NextResponse | ParsedResult> {
   const url = buildAzureUrl(endpoint, deployment);
 
   const response = await fetch(url, {
@@ -213,19 +215,21 @@ async function callAzureOpenAI(
   return parseAndValidateResponse(text);
 }
 
-function parseAndValidateResponse(text: string): NextResponse {
-  let parsed: {
-    jobTitle?: string;
-    personalInfo?: {
-      fullName?: string;
-      email?: string;
-      phone?: string;
-      location?: string;
-      linkedin?: string;
-    };
-    sections: { title: string; content: string }[];
-    coverLetter?: string;
+interface ParsedResult {
+  jobTitle?: string;
+  personalInfo?: {
+    fullName?: string;
+    email?: string;
+    phone?: string;
+    location?: string;
+    linkedin?: string;
   };
+  sections: { title: string; content: string }[];
+  coverLetter?: string;
+}
+
+function parseAndValidateResponse(text: string): NextResponse | ParsedResult {
+  let parsed: ParsedResult;
   try {
     parsed = JSON.parse(text);
   } catch {
@@ -284,7 +288,7 @@ function parseAndValidateResponse(text: string): NextResponse {
     parsed.coverLetter = cleanedCoverLetter.text;
   }
 
-  return NextResponse.json(parsed);
+  return parsed;
 }
 
 export async function POST(request: NextRequest) {
@@ -327,8 +331,42 @@ export async function POST(request: NextRequest) {
   const { resume, jobDescription, generateCoverLetter, targetKeywords } = body;
   const userPrompt = buildUserPrompt(resume, jobDescription, generateCoverLetter, targetKeywords);
 
+  // Check auth status — unauthenticated users get redacted results
+  let isAuthenticated = false;
   try {
-    return await callAzureOpenAI(endpoint, apiKey, deployment, userPrompt);
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    isAuthenticated = !!user;
+  } catch {
+    // Auth check failed — treat as unauthenticated
+  }
+
+  try {
+    const result = await callAzureOpenAI(endpoint, apiKey, deployment, userPrompt);
+
+    // If callAzureOpenAI returned an error response, pass it through
+    if (result instanceof NextResponse) {
+      return result;
+    }
+
+    // Authenticated users get full results
+    if (isAuthenticated) {
+      return NextResponse.json(result);
+    }
+
+    // Unauthenticated users get redacted results
+    const redacted = {
+      ...result,
+      sections: redactSections(result.sections),
+      personalInfo: result.personalInfo
+        ? redactPersonalInfo(result.personalInfo)
+        : result.personalInfo,
+      // jobTitle intentionally NOT redacted — it comes from the JD (which the user provided), not the resume
+      coverLetter: undefined, // Don't show cover letter at all
+      redacted: true,
+    };
+
+    return NextResponse.json(redacted);
   } catch {
     return NextResponse.json(
       { error: "Internal server error" },

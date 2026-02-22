@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -10,7 +10,7 @@ const URL_ERROR_MESSAGES: Record<string, string> = {
     "Sign-in failed. Please try again or use a different method.",
 };
 
-export default function LoginPage() {
+function LoginForm() {
   const searchParams = useSearchParams();
   const urlError = searchParams.get("error");
   const [email, setEmail] = useState("");
@@ -165,5 +165,19 @@ export default function LoginPage() {
         </p>
       </div>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-[calc(100vh-3.5rem)] items-center justify-center px-4 sm:px-6">
+          <div className="w-full max-w-sm text-center text-muted">Loading…</div>
+        </main>
+      }
+    >
+      <LoginForm />
+    </Suspense>
   );
 }

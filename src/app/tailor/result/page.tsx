@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import MatchScore from "@/components/MatchScore";
 
 interface Section {
@@ -28,6 +29,7 @@ interface TailorResult {
     location?: string;
     linkedin?: string;
   };
+  redacted?: boolean;
 }
 
 export default function ResultPage() {
@@ -125,8 +127,10 @@ export default function ResultPage() {
   }, []);
 
   // Persist edits to sessionStorage so changes survive navigation
+  // Skip for redacted results — no point persisting gibberish
   useEffect(() => {
     if (editableSections.length === 0) return;
+    if (result?.redacted) return;
     const stored = sessionStorage.getItem("tailorResult");
     if (!stored) return;
     try {
@@ -212,13 +216,22 @@ export default function ResultPage() {
           >
             ← Back
           </button>
-          <button
-            onClick={handleDownloadPdf}
-            disabled={pdfGenerating}
-            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {pdfGenerating ? "Generating…" : "Download PDF"}
-          </button>
+          {result.redacted ? (
+            <Link
+              href="/auth/signup"
+              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
+            >
+              Sign up to unlock
+            </Link>
+          ) : (
+            <button
+              onClick={handleDownloadPdf}
+              disabled={pdfGenerating}
+              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {pdfGenerating ? "Generating…" : "Download PDF"}
+            </button>
+          )}
         </div>
       </div>
 
@@ -247,14 +260,49 @@ export default function ResultPage() {
       )}
 
       {/* Two-column layout: edit first on mobile, preview first on desktop */}
-      <div className="grid grid-cols-1 gap-6 sm:gap-8 lg:grid-cols-2">
+      <div className={`grid grid-cols-1 gap-6 sm:gap-8 ${result.redacted ? "" : "lg:grid-cols-2"}`}>
         {/* Preview */}
-        <div className="order-2 lg:order-1">
+        <div className={result.redacted ? "" : "order-2 lg:order-1"}>
           <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-muted">
             Preview
           </h2>
-          <div className="rounded-lg border border-border bg-white p-6 shadow-sm sm:p-8">
+          <div className="relative rounded-lg border border-border bg-white p-6 shadow-sm sm:p-8">
+            {/* Blur overlay for redacted content */}
+            {result.redacted && (
+              <div className="pointer-events-none absolute inset-0 z-10 rounded-lg backdrop-blur-sm" aria-hidden="true" />
+            )}
+            {result.redacted && (
+              <div className="absolute inset-0 z-20 flex items-center justify-center rounded-lg" role="dialog" aria-label="Sign up to unlock resume">
+                <div className="pointer-events-auto rounded-xl bg-white/95 px-8 py-6 text-center shadow-lg">
+                  <div className="mb-3 text-3xl">🔒</div>
+                  <h3 className="text-lg font-semibold">
+                    Your tailored resume is ready!
+                  </h3>
+                  <p className="mt-2 max-w-sm text-sm text-muted">
+                    Sign up for free to view and download your optimized resume.
+                    You&apos;ll get 1 free credit to start.
+                  </p>
+                  <Link
+                    href="/auth/signup"
+                    className="mt-4 inline-block rounded-lg bg-accent px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
+                  >
+                    Sign up free →
+                  </Link>
+                  <p className="mt-2 text-xs text-muted">
+                    Already have an account?{" "}
+                    <Link
+                      href="/auth/login"
+                      className="font-medium text-accent hover:text-accent-hover"
+                    >
+                      Sign in
+                    </Link>
+                  </p>
+                </div>
+              </div>
+            )}
             {/* Personal info header */}
+            {/* Resume content — hidden from screen readers when redacted (gibberish text) */}
+            <div aria-hidden={result.redacted || undefined}>
             {(() => {
               const contactParts = [personalInfo.email, personalInfo.phone, personalInfo.location, personalInfo.linkedin].filter(Boolean);
               const hasAnyHeader = personalInfo.fullName || jobTitle || contactParts.length > 0;
@@ -289,10 +337,12 @@ export default function ResultPage() {
                 </div>
               </div>
             ))}
+            </div>
           </div>
         </div>
 
-        {/* Edit */}
+        {/* Edit — hidden for redacted/unauthenticated users */}
+        {!result.redacted && (
         <div className="order-1 lg:order-2">
           <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-muted">
             Edit Sections
@@ -413,6 +463,7 @@ export default function ResultPage() {
             })}
           </div>
         </div>
+        )}
       </div>
 
       {/* Cover Letter */}

@@ -333,12 +333,47 @@ export async function POST(request: NextRequest) {
 
   // Check auth status — unauthenticated users get redacted results
   let isAuthenticated = false;
+  let userId: string | null = null;
+  let supabase;
   try {
-    const supabase = await createClient();
+    supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     isAuthenticated = !!user;
+    userId = user?.id ?? null;
   } catch {
     // Auth check failed — treat as unauthenticated
+  }
+
+  // Authenticated users must have credits
+  if (isAuthenticated && supabase && userId) {
+    try {
+      const jdSnippet = jobDescription.slice(0, 100);
+      const { data, error } = await supabase.rpc("deduct_credit", {
+        p_user_id: userId,
+        p_jd_snippet: jdSnippet,
+      });
+
+      if (error) {
+        console.debug("Credit deduction error:", error.message);
+        return NextResponse.json(
+          { error: "Failed to process credits" },
+          { status: 500 }
+        );
+      }
+
+      if (data === false) {
+        return NextResponse.json(
+          { error: "No credits remaining", code: "NO_CREDITS" },
+          { status: 402 }
+        );
+      }
+    } catch (err) {
+      console.debug("Credit check error:", err);
+      return NextResponse.json(
+        { error: "Failed to process credits" },
+        { status: 500 }
+      );
+    }
   }
 
   try {

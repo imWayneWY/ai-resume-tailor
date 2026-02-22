@@ -177,7 +177,13 @@ export default function TailorPage() {
         const errorMessage =
           (data && typeof data.error === "string" && data.error) ||
           "Something went wrong. Please try again.";
-        setApiError(errorMessage);
+        const errorCode = data && typeof data.code === "string" ? data.code : null;
+
+        if (errorCode === "NO_CREDITS") {
+          setApiError("You're out of credits! Purchase more to continue tailoring resumes.");
+        } else {
+          setApiError(errorMessage);
+        }
         return;
       }
 

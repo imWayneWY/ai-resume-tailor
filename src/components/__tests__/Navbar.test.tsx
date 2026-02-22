@@ -1,74 +1,91 @@
 import { render, screen } from "@testing-library/react";
-import React from "react";
-
-// Mock next/link
-jest.mock("next/link", () => ({
-  __esModule: true,
-  default: ({
-    href,
-    children,
-    ...rest
-  }: {
-    href: string;
-    children: React.ReactNode;
-    [key: string]: unknown;
-  }) => (
-    <a href={href} {...rest}>
-      {children}
-    </a>
-  ),
-}));
+import { Navbar } from "../Navbar";
 
 // Mock next/navigation
-const mockUsePathname = jest.fn();
 jest.mock("next/navigation", () => ({
-  usePathname: () => mockUsePathname(),
+  usePathname: () => "/",
 }));
 
-import { Navbar } from "../Navbar";
+// Mock Supabase client
+const mockGetUser = jest.fn();
+const mockOnAuthStateChange = jest.fn().mockReturnValue({
+  data: { subscription: { unsubscribe: jest.fn() } },
+});
+
+jest.mock("@/lib/supabase/client", () => ({
+  createClient: () => ({
+    auth: {
+      getUser: mockGetUser,
+      onAuthStateChange: mockOnAuthStateChange,
+    },
+  }),
+}));
 
 describe("Navbar", () => {
   beforeEach(() => {
-    mockUsePathname.mockReset();
+    jest.clearAllMocks();
   });
 
-  it("renders brand link to home", () => {
-    mockUsePathname.mockReturnValue("/");
+  it("renders the app title", async () => {
+    mockGetUser.mockResolvedValue({ data: { user: null } });
+
     render(<Navbar />);
-    const brandLink = screen.getByText("AI Resume Tailor");
-    expect(brandLink.closest("a")).toHaveAttribute("href", "/");
+
+    expect(
+      screen.getByRole("link", { name: /ai resume tailor/i })
+    ).toBeInTheDocument();
   });
 
-  it("renders settings link", () => {
-    mockUsePathname.mockReturnValue("/");
+  it("shows sign in link when not authenticated", async () => {
+    mockGetUser.mockResolvedValue({ data: { user: null } });
+
     render(<Navbar />);
-    const settingsLink = screen.getByLabelText("Settings");
-    expect(settingsLink).toHaveAttribute("href", "/settings");
+
+    // Wait for auth state to load
+    const signInLink = await screen.findByRole("link", { name: /sign in/i });
+    expect(signInLink).toHaveAttribute("href", "/auth/login");
   });
 
-  it("shows Get Started button on home page", () => {
-    mockUsePathname.mockReturnValue("/");
+  it("shows user name and sign out when authenticated", async () => {
+    mockGetUser.mockResolvedValue({
+      data: {
+        user: {
+          id: "123",
+          email: "test@example.com",
+          user_metadata: { full_name: "Test User" },
+        },
+      },
+    });
+
     render(<Navbar />);
-    const getStarted = screen.getByText("Get Started");
-    expect(getStarted.closest("a")).toHaveAttribute("href", "/tailor");
+
+    expect(await screen.findByText("Test User")).toBeInTheDocument();
+    expect(screen.getByText("Sign out")).toBeInTheDocument();
   });
 
-  it("shows Get Started button on settings page", () => {
-    mockUsePathname.mockReturnValue("/settings");
+  it("falls back to email prefix for display name", async () => {
+    mockGetUser.mockResolvedValue({
+      data: {
+        user: {
+          id: "123",
+          email: "hello@example.com",
+          user_metadata: {},
+        },
+      },
+    });
+
     render(<Navbar />);
-    const getStarted = screen.getByText("Get Started");
-    expect(getStarted.closest("a")).toHaveAttribute("href", "/tailor");
+
+    expect(await screen.findByText("hello")).toBeInTheDocument();
   });
 
-  it("hides Get Started button on /tailor page", () => {
-    mockUsePathname.mockReturnValue("/tailor");
-    render(<Navbar />);
-    expect(screen.queryByText("Get Started")).toBeNull();
-  });
+  it("shows settings link", () => {
+    mockGetUser.mockResolvedValue({ data: { user: null } });
 
-  it("hides Get Started button on /tailor/result page", () => {
-    mockUsePathname.mockReturnValue("/tailor/result");
     render(<Navbar />);
-    expect(screen.queryByText("Get Started")).toBeNull();
+
+    expect(
+      screen.getByRole("link", { name: /settings/i })
+    ).toBeInTheDocument();
   });
 });

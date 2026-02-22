@@ -248,8 +248,8 @@ export default function ResultPage() {
         )}
       </div>
 
-      {/* Match Score */}
-      {originalResume && jobDescription && (
+      {/* Match Score — hide for redacted results (gibberish won't match any keywords) */}
+      {originalResume && jobDescription && !result?.redacted && (
         <div className="mb-6 sm:mb-8">
           <MatchScore
             originalResume={originalResume}

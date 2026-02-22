@@ -3,6 +3,24 @@
  */
 import { POST } from "../route";
 
+// ---------- mocks ----------
+
+// Mock Supabase server client — default: authenticated user
+const mockGetUser = jest.fn().mockResolvedValue({
+  data: { user: { id: "test-user-123" } },
+  error: null,
+});
+
+jest.mock("@/lib/supabase/server", () => ({
+  createClient: jest.fn().mockImplementation(() =>
+    Promise.resolve({
+      auth: {
+        getUser: mockGetUser,
+      },
+    })
+  ),
+}));
+
 // ---------- helpers ----------
 
 function makeRequest(body: unknown) {
@@ -50,6 +68,11 @@ let mockFetch: jest.Mock;
 beforeEach(() => {
   mockFetch = jest.fn();
   global.fetch = mockFetch;
+  mockGetUser.mockClear();
+  mockGetUser.mockResolvedValue({
+    data: { user: { id: "test-user-123" } },
+    error: null,
+  });
   process.env.AZURE_OPENAI_ENDPOINT = "https://test-resource.openai.azure.com";
   process.env.AZURE_OPENAI_API_KEY = "test-azure-key";
   process.env.AZURE_OPENAI_DEPLOYMENT = "gpt-4.1-mini";
@@ -735,5 +758,141 @@ describe("POST /api/tailor", () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.personalInfo).toBeUndefined();
+  });
+
+  // --- Auth-based redaction ---
+  it("returns full results for authenticated users", async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  personalInfo: { fullName: "Yan Wei", email: "test@example.com" },
+                  sections: [
+                    { title: "Summary", content: "Experienced software engineer" },
+                  ],
+                }),
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+
+    const res = await POST(makeRequest(validBody));
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.redacted).toBeUndefined();
+    expect(json.personalInfo.fullName).toBe("Yan Wei");
+    expect(json.sections[0].content).toContain("Experienced");
+  });
+
+  it("returns redacted results for unauthenticated users", async () => {
+    // Mock unauthenticated user
+    mockGetUser.mockResolvedValueOnce({
+      data: { user: null },
+      error: null,
+    });
+
+    mockFetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  personalInfo: { fullName: "Yan Wei", email: "test@example.com" },
+                  sections: [
+                    { title: "Summary", content: "Experienced software engineer with React skills" },
+                  ],
+                  coverLetter: "Dear Hiring Manager, I am writing to apply...",
+                }),
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+
+    const res = await POST(makeRequest(validBody));
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.redacted).toBe(true);
+    // Section titles should be preserved
+    expect(json.sections[0].title).toBe("Summary");
+    // Content should be redacted (not contain original words)
+    expect(json.sections[0].content).not.toContain("Experienced");
+    expect(json.sections[0].content).not.toContain("React");
+    // Personal info should be redacted
+    expect(json.personalInfo.fullName).not.toBe("Yan Wei");
+    expect(json.personalInfo.email).not.toBe("test@example.com");
+    // Cover letter should be stripped entirely
+    expect(json.coverLetter).toBeUndefined();
+  });
+
+  it("preserves section structure in redacted results", async () => {
+    mockGetUser.mockResolvedValueOnce({
+      data: { user: null },
+      error: null,
+    });
+
+    mockFetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  sections: [
+                    { title: "Summary", content: "One two three" },
+                    { title: "Skills", content: "TypeScript React Node" },
+                  ],
+                }),
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+
+    const res = await POST(makeRequest(validBody));
+    const json = await res.json();
+    expect(json.redacted).toBe(true);
+    expect(json.sections).toHaveLength(2);
+    expect(json.sections[0].title).toBe("Summary");
+    expect(json.sections[1].title).toBe("Skills");
+  });
+
+  it("treats auth errors as unauthenticated", async () => {
+    mockGetUser.mockRejectedValueOnce(new Error("Auth service down"));
+
+    mockFetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  sections: [
+                    { title: "Summary", content: "Experienced developer" },
+                  ],
+                }),
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+
+    const res = await POST(makeRequest(validBody));
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.redacted).toBe(true);
   });
 });

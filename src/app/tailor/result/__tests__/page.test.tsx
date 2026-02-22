@@ -376,4 +376,47 @@ describe("ResultPage", () => {
     expect(screen.getByPlaceholderText("Location")).toHaveValue("Langley, BC, Canada");
     expect(screen.getByPlaceholderText("linkedin.com/in/johndoe")).toHaveValue("linkedin.com/in/yan-wei-ca");
   });
+
+  // --- Redacted state ---
+  it("shows 'Sign up to unlock' button when result is redacted", () => {
+    sessionStore.tailorResult = JSON.stringify({
+      ...validResult,
+      redacted: true,
+    });
+    render(<ResultPage />);
+
+    expect(screen.getByText("Sign up to unlock")).toBeInTheDocument();
+    expect(screen.queryByText(/download pdf/i)).not.toBeInTheDocument();
+  });
+
+  it("shows sign-up CTA overlay when result is redacted", () => {
+    sessionStore.tailorResult = JSON.stringify({
+      ...validResult,
+      redacted: true,
+    });
+    render(<ResultPage />);
+
+    expect(screen.getByText(/your tailored resume is ready/i)).toBeInTheDocument();
+    expect(screen.getByText("Sign up free →")).toBeInTheDocument();
+  });
+
+  it("hides edit section when result is redacted", () => {
+    sessionStore.tailorResult = JSON.stringify({
+      ...validResult,
+      redacted: true,
+    });
+    render(<ResultPage />);
+
+    expect(screen.queryByText(/edit sections/i)).not.toBeInTheDocument();
+    // No textareas should be present (no edit panel)
+    expect(screen.queryAllByRole("textbox")).toHaveLength(0);
+  });
+
+  it("shows Download PDF button when result is NOT redacted", () => {
+    sessionStore.tailorResult = JSON.stringify(validResult);
+    render(<ResultPage />);
+
+    expect(screen.getByRole("button", { name: /download pdf/i })).toBeInTheDocument();
+    expect(screen.queryByText("Sign up to unlock")).not.toBeInTheDocument();
+  });
 });

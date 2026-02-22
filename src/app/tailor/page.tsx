@@ -180,7 +180,7 @@ export default function TailorPage() {
         const errorCode = data && typeof data.code === "string" ? data.code : null;
 
         if (errorCode === "NO_CREDITS") {
-          setApiError("You're out of credits! Purchase more to continue tailoring resumes.");
+          setApiError("You're out of credits! More credits coming soon — stay tuned.");
         } else {
           setApiError(errorMessage);
         }
@@ -203,6 +203,9 @@ export default function TailorPage() {
           JSON.stringify(extractedKeywords)
         );
       }
+
+      // Signal Navbar to refresh credits balance
+      window.dispatchEvent(new Event("credits-updated"));
 
       router.push("/tailor/result");
     } catch {

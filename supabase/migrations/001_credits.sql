@@ -66,15 +66,22 @@ CREATE POLICY "Users can read own usage"
 -- Authenticated users can decrement their own balance via RPC function
 
 -- Deduct credit function — atomic, prevents race conditions
-CREATE OR REPLACE FUNCTION deduct_credit(p_user_id UUID, p_jd_snippet TEXT DEFAULT NULL)
+-- Uses auth.uid() to prevent cross-account manipulation
+CREATE OR REPLACE FUNCTION deduct_credit(p_jd_snippet TEXT DEFAULT NULL)
 RETURNS BOOLEAN AS $$
 DECLARE
   v_balance INTEGER;
+  v_user_id UUID;
 BEGIN
+  v_user_id := auth.uid();
+  IF v_user_id IS NULL THEN
+    RETURN FALSE;
+  END IF;
+
   -- Lock the row and check balance
   SELECT balance INTO v_balance
   FROM public.credits
-  WHERE user_id = p_user_id
+  WHERE user_id = v_user_id
   FOR UPDATE;
 
   IF v_balance IS NULL OR v_balance < 1 THEN
@@ -84,11 +91,11 @@ BEGIN
   -- Deduct
   UPDATE public.credits
   SET balance = balance - 1
-  WHERE user_id = p_user_id;
+  WHERE user_id = v_user_id;
 
   -- Log usage
   INSERT INTO public.usage_history (user_id, credits_used, jd_snippet)
-  VALUES (p_user_id, 1, p_jd_snippet);
+  VALUES (v_user_id, 1, p_jd_snippet);
 
   RETURN TRUE;
 END;

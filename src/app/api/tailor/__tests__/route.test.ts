@@ -913,9 +913,9 @@ describe("POST /api/tailor", () => {
     await POST(makeRequest(validBody));
 
     expect(mockRpc).toHaveBeenCalledWith("deduct_credit", {
-      p_user_id: "test-user-123",
       p_jd_snippet: expect.any(String),
     });
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
   it("returns 402 when authenticated user has no credits", async () => {
@@ -925,6 +925,8 @@ describe("POST /api/tailor", () => {
     expect(res.status).toBe(402);
     const json = await res.json();
     expect(json.code).toBe("NO_CREDITS");
+    // Ensure no expensive LLM call is made when user has no credits
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 
   it("returns 500 when credit deduction has database error", async () => {
@@ -984,7 +986,6 @@ describe("POST /api/tailor", () => {
     );
 
     expect(mockRpc).toHaveBeenCalledWith("deduct_credit", {
-      p_user_id: "test-user-123",
       p_jd_snippet: "A".repeat(100),
     });
   });

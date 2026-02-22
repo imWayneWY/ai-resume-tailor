@@ -349,7 +349,6 @@ export async function POST(request: NextRequest) {
     try {
       const jdSnippet = jobDescription.slice(0, 100);
       const { data, error } = await supabase.rpc("deduct_credit", {
-        p_user_id: userId,
         p_jd_snippet: jdSnippet,
       });
 

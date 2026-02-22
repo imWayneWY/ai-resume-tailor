@@ -49,7 +49,7 @@ export function Navbar() {
       return;
     }
 
-    (async () => {
+    const fetchCredits = async () => {
       try {
         const res = await fetch("/api/credits");
         if (res.ok) {
@@ -59,7 +59,15 @@ export function Navbar() {
       } catch {
         // Silently fail — credits display is non-critical
       }
-    })();
+    };
+
+    fetchCredits();
+
+    // Re-fetch when tailor page signals a credit was used
+    const handleCreditsUpdated = () => fetchCredits();
+    window.addEventListener("credits-updated", handleCreditsUpdated);
+
+    return () => window.removeEventListener("credits-updated", handleCreditsUpdated);
   }, [user]);
 
   function getUserDisplayName(user: User): string {

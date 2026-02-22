@@ -96,9 +96,11 @@ export default function ResultPage() {
         linkedin: llmInfo.linkedin || "",
       });
 
-      // Clean up sensitive data from sessionStorage after reading
-      sessionStorage.removeItem("tailorOriginalResume");
-      sessionStorage.removeItem("tailorJobDescription");
+      // Note: we intentionally do NOT remove sessionStorage items here.
+      // React Strict Mode calls useEffect twice in development, and removing
+      // items on first call makes them unavailable on the second call,
+      // causing scores to show 0. sessionStorage is tab-scoped and clears
+      // automatically when the tab closes — no manual cleanup needed.
 
       // Read LLM-extracted keywords if available
       const storedKeywords = sessionStorage.getItem("tailorLlmKeywords");
@@ -111,7 +113,6 @@ export default function ResultPage() {
         } catch {
           // Fall back to regex extraction
         }
-        sessionStorage.removeItem("tailorLlmKeywords");
       }
     } catch {
       router.replace("/tailor");

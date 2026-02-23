@@ -60,7 +60,7 @@ export function UserMenu({ user, credits }: UserMenuProps) {
             className={`rounded-full px-1.5 py-0.5 text-xs font-medium ${
               credits > 0
                 ? "bg-accent/10 text-accent"
-                : "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400"
+                : "bg-error-bg text-error-text"
             }`}
             aria-label={
               credits > 0

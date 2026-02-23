@@ -6,6 +6,11 @@ jest.mock("next/navigation", () => ({
   usePathname: () => "/",
 }));
 
+// Mock ThemeToggle (it uses useTheme which needs ThemeProvider)
+jest.mock("@/components/ThemeToggle", () => ({
+  ThemeToggle: () => <button aria-label="System theme">Theme</button>,
+}));
+
 // Mock Supabase client
 const mockGetUser = jest.fn();
 const mockOnAuthStateChange = jest.fn().mockReturnValue({

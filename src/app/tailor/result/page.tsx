@@ -243,7 +243,7 @@ export default function ResultPage() {
         {pdfError && (
           <div
             role="alert"
-            className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 sm:mb-8"
+            className="mb-6 rounded-lg border border-error-border bg-error-bg px-4 py-3 text-sm text-error-text sm:mb-8"
           >
             {pdfError}
           </div>
@@ -275,14 +275,14 @@ export default function ResultPage() {
           <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-muted">
             Preview
           </h2>
-          <div className="relative rounded-lg border border-border bg-white p-6 shadow-sm sm:p-8">
+          <div className="relative rounded-lg border border-border bg-card p-6 shadow-sm sm:p-8">
             {/* Blur overlay for redacted content */}
             {result.redacted && (
               <div className="pointer-events-none absolute inset-0 z-10 rounded-lg backdrop-blur-sm" aria-hidden="true" />
             )}
             {result.redacted && (
               <div className="absolute inset-0 z-20 flex items-center justify-center rounded-lg" role="dialog" aria-label="Sign up to unlock resume">
-                <div className="pointer-events-auto rounded-xl bg-white/95 px-8 py-6 text-center shadow-lg">
+                <div className="pointer-events-auto rounded-xl bg-overlay-bg px-8 py-6 text-center shadow-lg">
                   <div className="mb-3 text-3xl">🔒</div>
                   <h3 className="text-lg font-semibold">
                     Your tailored resume is ready!
@@ -358,7 +358,7 @@ export default function ResultPage() {
           </h2>
           <div className="flex flex-col gap-4">
             {/* Personal info editing */}
-            <div className="rounded-lg border border-border bg-white p-4">
+            <div className="rounded-lg border border-border bg-card p-4">
               <label className="mb-2 block text-sm font-medium">
                 Personal Information
               </label>
@@ -432,7 +432,7 @@ export default function ResultPage() {
             </div>
 
             {/* Job title editing */}
-            <div className="rounded-lg border border-border bg-white p-4">
+            <div className="rounded-lg border border-border bg-card p-4">
               <label htmlFor="jobTitle" className="mb-2 block text-sm font-medium">
                 Target Job Title
               </label>
@@ -452,7 +452,7 @@ export default function ResultPage() {
               return (
                 <div
                   key={i}
-                  className="rounded-lg border border-border bg-white p-4"
+                  className="rounded-lg border border-border bg-card p-4"
                 >
                   <label
                     className="mb-2 block text-sm font-medium"
@@ -506,7 +506,7 @@ export default function ResultPage() {
             data-expanded={coverLetterExpanded}
           >
             <div>
-              <div className="rounded-lg border border-border bg-white p-6">
+              <div className="rounded-lg border border-border bg-card p-6">
                 <div className="whitespace-pre-wrap text-sm leading-relaxed">
                   {result.coverLetter}
                 </div>

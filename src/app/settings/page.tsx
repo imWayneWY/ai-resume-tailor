@@ -12,12 +12,12 @@ export default function SettingsPage() {
         </p>
       </div>
 
-      <div className="rounded-lg border border-border bg-white p-6 sm:p-8">
+      <div className="rounded-lg border border-border bg-card p-6 sm:p-8">
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-50">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success-bg">
               <svg
-                className="h-5 w-5 text-green-600"
+                className="h-5 w-5 text-success-icon"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"

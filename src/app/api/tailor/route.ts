@@ -387,7 +387,14 @@ export async function POST(request: NextRequest) {
     // Compute match scores server-side from the REAL tailored text.
     // This is critical for redacted results — client can't score gibberish.
     const jdKeywords = targetKeywords && targetKeywords.length > 0
-      ? new Set(targetKeywords.map((k: string) => k.toLowerCase().trim()))
+      ? (() => {
+          const cleanedKeywords = targetKeywords
+            .map((k: string) => k.toLowerCase().trim())
+            .filter((k: string) => k.length > 0);
+          return cleanedKeywords.length > 0
+            ? new Set(cleanedKeywords)
+            : extractKeywords(jobDescription);
+        })()
       : extractKeywords(jobDescription);
     const realTailoredText = result.sections.map((s) => s.content).join("\n");
     const totalKw = jdKeywords.size;

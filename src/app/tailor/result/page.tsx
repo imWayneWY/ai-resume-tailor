@@ -250,8 +250,12 @@ export default function ResultPage() {
         )}
       </div>
 
-      {/* Match Score */}
-      {originalResume && jobDescription && (
+      {/* Match Score — for redacted results, only show when server scores are available
+          (client can't score gibberish text; old cached results may lack server scores) */}
+      {originalResume &&
+        jobDescription &&
+        (!result?.redacted ||
+          (result?.beforeScore != null && result?.afterScore != null)) && (
         <div className="mb-6 sm:mb-8">
           <MatchScore
             originalResume={originalResume}

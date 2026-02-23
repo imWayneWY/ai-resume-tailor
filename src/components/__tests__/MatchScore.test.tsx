@@ -180,4 +180,63 @@ describe("MatchScore", () => {
     });
   });
 
+  describe("server scores", () => {
+    it("uses server scores when provided instead of client-computed values", () => {
+      render(
+        <MatchScore
+          originalResume="no keywords here"
+          tailoredResume="no keywords here either"
+          jobDescription="React TypeScript Node.js"
+          serverBeforeScore={25}
+          serverAfterScore={78}
+        />
+      );
+
+      // Should render the server-provided scores
+      expect(screen.getByText("25")).toBeInTheDocument();
+      expect(screen.getByText("78")).toBeInTheDocument();
+      // Should show improvement
+      expect(screen.getByText("+53")).toBeInTheDocument();
+    });
+
+    it("logs server scores to console instead of client keywords", () => {
+      const consoleSpy = jest.spyOn(console, "debug").mockImplementation();
+      try {
+        render(
+          <MatchScore
+            originalResume="anything"
+            tailoredResume="anything"
+            jobDescription="React"
+            serverBeforeScore={10}
+            serverAfterScore={90}
+          />
+        );
+        expect(consoleSpy).toHaveBeenCalledWith(
+          expect.stringContaining("server-computed scores")
+        );
+        // Should NOT log client-side keyword matching
+        const matchedCall = consoleSpy.mock.calls.find(
+          (c) => typeof c[0] === "string" && c[0].includes("Matched keywords")
+        );
+        expect(matchedCall).toBeUndefined();
+      } finally {
+        consoleSpy.mockRestore();
+      }
+    });
+
+    it("falls back to client-side scoring when server scores are not provided", () => {
+      render(
+        <MatchScore
+          originalResume="React"
+          tailoredResume="React TypeScript Node.js Python"
+          jobDescription="React TypeScript Node.js Python"
+        />
+      );
+
+      // Before and After labels should render with client-computed scores
+      expect(screen.getByText("Before")).toBeInTheDocument();
+      expect(screen.getByText("After")).toBeInTheDocument();
+    });
+  });
+
 });

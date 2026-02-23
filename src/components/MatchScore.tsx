@@ -9,6 +9,10 @@ interface MatchScoreProps {
   jobDescription: string;
   /** LLM-extracted keywords from /api/extract-keywords. Falls back to regex extraction if not provided. */
   llmKeywords?: string[];
+  /** Server-computed before score (0-100). Used for redacted results where client can't compute. */
+  serverBeforeScore?: number;
+  /** Server-computed after score (0-100). Used for redacted results where client can't compute. */
+  serverAfterScore?: number;
 }
 
 function ScoreCircle({
@@ -77,6 +81,8 @@ export default function MatchScore({
   tailoredResume,
   jobDescription,
   llmKeywords,
+  serverBeforeScore,
+  serverAfterScore,
 }: MatchScoreProps) {
   // Use LLM-extracted keywords if available, otherwise fall back to regex
   const jdKeywords = useMemo(() => {
@@ -100,10 +106,11 @@ export default function MatchScore({
 
   const usingLlm = !!(llmKeywords && llmKeywords.length > 0);
 
-  // Compute 0-100 scores (no % symbol — just numbers)
+  // Compute 0-100 scores — prefer server-computed scores (needed for redacted results)
+  const hasServerScores = typeof serverBeforeScore === "number" && typeof serverAfterScore === "number";
   const totalKw = jdKeywords.size;
-  const beforeScoreNum = totalKw > 0 ? Math.round((beforeScore.matchCount / totalKw) * 100) : 0;
-  const afterScoreNum = totalKw > 0 ? Math.round((afterScore.matchCount / totalKw) * 100) : 0;
+  const beforeScoreNum = hasServerScores ? serverBeforeScore : (totalKw > 0 ? Math.round((beforeScore.matchCount / totalKw) * 100) : 0);
+  const afterScoreNum = hasServerScores ? serverAfterScore : (totalKw > 0 ? Math.round((afterScore.matchCount / totalKw) * 100) : 0);
   const scoreImprovement = afterScoreNum - beforeScoreNum;
 
   // Log keywords to browser console for inspection (use console.debug to reduce noise)

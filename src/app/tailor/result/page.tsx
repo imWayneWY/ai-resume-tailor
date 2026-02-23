@@ -30,6 +30,8 @@ interface TailorResult {
     linkedin?: string;
   };
   redacted?: boolean;
+  beforeScore?: number;
+  afterScore?: number;
 }
 
 export default function ResultPage() {
@@ -248,14 +250,16 @@ export default function ResultPage() {
         )}
       </div>
 
-      {/* Match Score — hide for redacted results (gibberish won't match any keywords) */}
-      {originalResume && jobDescription && !result?.redacted && (
+      {/* Match Score */}
+      {originalResume && jobDescription && (
         <div className="mb-6 sm:mb-8">
           <MatchScore
             originalResume={originalResume}
             tailoredResume={tailoredText}
             jobDescription={jobDescription}
             llmKeywords={llmKeywords}
+            serverBeforeScore={result?.beforeScore}
+            serverAfterScore={result?.afterScore}
           />
         </div>
       )}

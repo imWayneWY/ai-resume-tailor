@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cleanSections, cleanAiPhrases } from "@/lib/ai-phrase-cleaner";
 import { redactSections, redactPersonalInfo } from "@/lib/redact";
 import { createClient } from "@/lib/supabase/server";
+import { extractKeywords, calculateMatchScore } from "@/lib/keyword-matcher";
 
 const API_VERSION = "2025-01-01-preview";
 
@@ -383,12 +384,24 @@ export async function POST(request: NextRequest) {
       return result;
     }
 
+    // Compute match scores server-side from the REAL tailored text.
+    // This is critical for redacted results — client can't score gibberish.
+    const jdKeywords = targetKeywords && targetKeywords.length > 0
+      ? new Set(targetKeywords.map((k: string) => k.toLowerCase().trim()))
+      : extractKeywords(jobDescription);
+    const realTailoredText = result.sections.map((s) => s.content).join("\n");
+    const totalKw = jdKeywords.size;
+    const beforeResult = calculateMatchScore(resume, jdKeywords);
+    const afterResult = calculateMatchScore(realTailoredText, jdKeywords);
+    const beforeScore = totalKw > 0 ? Math.round((beforeResult.matchCount / totalKw) * 100) : 0;
+    const afterScore = totalKw > 0 ? Math.round((afterResult.matchCount / totalKw) * 100) : 0;
+
     // Authenticated users get full results
     if (isAuthenticated) {
-      return NextResponse.json(result);
+      return NextResponse.json({ ...result, beforeScore, afterScore });
     }
 
-    // Unauthenticated users get redacted results
+    // Unauthenticated users get redacted results with real scores
     const redacted = {
       ...result,
       sections: redactSections(result.sections),
@@ -398,6 +411,8 @@ export async function POST(request: NextRequest) {
       // jobTitle intentionally NOT redacted — it comes from the JD (which the user provided), not the resume
       coverLetter: undefined, // Don't show cover letter at all
       redacted: true,
+      beforeScore,
+      afterScore,
     };
 
     return NextResponse.json(redacted);

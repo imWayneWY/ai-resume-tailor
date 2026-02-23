@@ -989,4 +989,45 @@ describe("POST /api/tailor", () => {
       p_jd_snippet: "A".repeat(100),
     });
   });
+
+  // --- Server-side match scores ---
+  it("includes beforeScore and afterScore in authenticated response", async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify(validAzureResponse), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    const res = await POST(makeRequest(validBody));
+    const json = await res.json();
+
+    expect(typeof json.beforeScore).toBe("number");
+    expect(typeof json.afterScore).toBe("number");
+    expect(json.beforeScore).toBeGreaterThanOrEqual(0);
+    expect(json.beforeScore).toBeLessThanOrEqual(100);
+    expect(json.afterScore).toBeGreaterThanOrEqual(0);
+    expect(json.afterScore).toBeLessThanOrEqual(100);
+  });
+
+  it("includes beforeScore and afterScore in redacted response", async () => {
+    mockGetUser.mockResolvedValueOnce({
+      data: { user: null },
+      error: null,
+    });
+
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify(validAzureResponse), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    const res = await POST(makeRequest(validBody));
+    const json = await res.json();
+
+    expect(json.redacted).toBe(true);
+    expect(typeof json.beforeScore).toBe("number");
+    expect(typeof json.afterScore).toBe("number");
+  });
 });

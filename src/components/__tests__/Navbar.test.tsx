@@ -49,34 +49,16 @@ describe("Navbar", () => {
 
     render(<Navbar />);
 
-    // Wait for auth state to load
     const signInLink = await screen.findByRole("link", { name: /sign in/i });
     expect(signInLink).toHaveAttribute("href", "/auth/login");
   });
 
-  it("shows user name and sign out when authenticated", async () => {
+  it("shows user menu when authenticated", async () => {
     mockGetUser.mockResolvedValue({
       data: {
         user: {
           id: "123",
           email: "test@example.com",
-          user_metadata: { full_name: "Test User" },
-        },
-      },
-    });
-
-    render(<Navbar />);
-
-    expect(await screen.findByText("Test User")).toBeInTheDocument();
-    expect(screen.getByText("Sign out")).toBeInTheDocument();
-  });
-
-  it("falls back to email prefix for display name", async () => {
-    mockGetUser.mockResolvedValue({
-      data: {
-        user: {
-          id: "123",
-          email: "hello@example.com",
           user_metadata: {},
         },
       },
@@ -84,90 +66,45 @@ describe("Navbar", () => {
 
     render(<Navbar />);
 
-    expect(await screen.findByText("hello")).toBeInTheDocument();
+    // UserMenu shows email
+    expect(await screen.findByText("test@example.com")).toBeInTheDocument();
   });
 
-  it("shows settings link", () => {
-    mockGetUser.mockResolvedValue({ data: { user: null } });
-
-    render(<Navbar />);
-
-    expect(
-      screen.getByRole("link", { name: /settings/i })
-    ).toBeInTheDocument();
-  });
-
-  // --- Credits display ---
-  it("shows credits badge when authenticated with balance > 0", async () => {
-    mockGetUser.mockResolvedValue({
-      data: {
-        user: {
-          id: "123",
-          email: "test@example.com",
-          user_metadata: { full_name: "Test User" },
-        },
-      },
-    });
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ balance: 3 }),
-    });
-
-    render(<Navbar />);
-
-    expect(await screen.findByText("3 credits")).toBeInTheDocument();
-  });
-
-  it("shows red credits badge when balance is 0", async () => {
-    mockGetUser.mockResolvedValue({
-      data: {
-        user: {
-          id: "123",
-          email: "test@example.com",
-          user_metadata: { full_name: "Test User" },
-        },
-      },
-    });
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ balance: 0 }),
-    });
-
-    render(<Navbar />);
-
-    const badge = await screen.findByText("0 credits");
-    expect(badge).toBeInTheDocument();
-    expect(badge.className).toMatch(/red/);
-  });
-
-  it("shows singular 'credit' when balance is 1", async () => {
-    mockGetUser.mockResolvedValue({
-      data: {
-        user: {
-          id: "123",
-          email: "test@example.com",
-          user_metadata: { full_name: "Test User" },
-        },
-      },
-    });
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ balance: 1 }),
-    });
-
-    render(<Navbar />);
-
-    expect(await screen.findByText("1 credit")).toBeInTheDocument();
-  });
-
-  it("does not show credits badge when unauthenticated", async () => {
+  it("shows Get Started link on non-tailor pages", async () => {
     mockGetUser.mockResolvedValue({ data: { user: null } });
 
     render(<Navbar />);
 
     await screen.findByRole("link", { name: /sign in/i });
-    expect(screen.queryByText(/credit/i)).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /get started/i })
+    ).toBeInTheDocument();
+  });
+
+  it("does not fetch credits when unauthenticated", async () => {
+    mockGetUser.mockResolvedValue({ data: { user: null } });
+
+    render(<Navbar />);
+
+    await screen.findByRole("link", { name: /sign in/i });
     expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("fetches credits when authenticated", async () => {
+    mockGetUser.mockResolvedValue({
+      data: {
+        user: {
+          id: "123",
+          email: "test@example.com",
+          user_metadata: {},
+        },
+      },
+    });
+
+    render(<Navbar />);
+
+    await screen.findByText("test@example.com");
+    expect(mockFetch).toHaveBeenCalledWith("/api/credits");
   });
 
   it("handles credits fetch failure gracefully", async () => {
@@ -176,7 +113,7 @@ describe("Navbar", () => {
         user: {
           id: "123",
           email: "test@example.com",
-          user_metadata: { full_name: "Test User" },
+          user_metadata: {},
         },
       },
     });
@@ -184,9 +121,7 @@ describe("Navbar", () => {
 
     render(<Navbar />);
 
-    // Should still show user name without crashing
-    expect(await screen.findByText("Test User")).toBeInTheDocument();
-    // Credits badge should not appear
-    expect(screen.queryByText(/credit/i)).not.toBeInTheDocument();
+    // Should still show user email without crashing
+    expect(await screen.findByText("test@example.com")).toBeInTheDocument();
   });
 });

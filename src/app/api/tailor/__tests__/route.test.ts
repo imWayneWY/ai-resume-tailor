@@ -12,14 +12,6 @@ const mockGetUser = jest.fn().mockResolvedValue({
 });
 
 const mockRpc = jest.fn().mockResolvedValue({ data: true, error: null });
-const mockUpdate = jest.fn().mockReturnValue({
-  eq: jest.fn().mockReturnValue({
-    order: jest.fn().mockReturnValue({
-      limit: jest.fn().mockResolvedValue({ error: null }),
-    }),
-  }),
-});
-const mockFrom = jest.fn().mockReturnValue({ update: mockUpdate });
 
 jest.mock("@/lib/supabase/server", () => ({
   createClient: jest.fn().mockImplementation(() =>
@@ -28,7 +20,6 @@ jest.mock("@/lib/supabase/server", () => ({
         getUser: mockGetUser,
       },
       rpc: mockRpc,
-      from: mockFrom,
     })
   ),
 }));

@@ -95,6 +95,31 @@ describe("History page", () => {
     expect(screen.getByText("—")).toBeInTheDocument();
   });
 
+  it("shows red text and negative diff when score decreases", async () => {
+    mockFetch.mockResolvedValueOnce({
+      status: 200,
+      ok: true,
+      json: async () => ({
+        history: [
+          {
+            id: "h1",
+            created_at: "2026-02-23T10:30:00Z",
+            jd_snippet: "QA Engineer role",
+            before_score: 65,
+            after_score: 40,
+            credits_used: 1,
+          },
+        ],
+      }),
+    });
+    render(<HistoryPage />);
+
+    expect(await screen.findByText("QA Engineer role")).toBeInTheDocument();
+    expect(screen.getByText("65")).toBeInTheDocument();
+    expect(screen.getByText("40")).toBeInTheDocument();
+    expect(screen.getByText("(-25)")).toBeInTheDocument();
+  });
+
   it("shows error on fetch failure", async () => {
     mockFetch.mockRejectedValueOnce(new Error("Network error"));
     render(<HistoryPage />);

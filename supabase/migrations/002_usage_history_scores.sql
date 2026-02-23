@@ -41,3 +41,30 @@ BEGIN
   RETURN TRUE;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- RPC to update scores on the most recent usage_history row for the caller.
+-- Runs as SECURITY DEFINER so no UPDATE RLS policy is needed.
+CREATE OR REPLACE FUNCTION update_latest_usage_scores(
+  p_before_score INTEGER,
+  p_after_score INTEGER
+)
+RETURNS VOID AS $$
+DECLARE
+  v_user_id UUID;
+BEGIN
+  v_user_id := auth.uid();
+  IF v_user_id IS NULL THEN
+    RETURN;
+  END IF;
+
+  UPDATE public.usage_history
+  SET before_score = p_before_score,
+      after_score = p_after_score
+  WHERE id = (
+    SELECT id FROM public.usage_history
+    WHERE user_id = v_user_id
+    ORDER BY created_at DESC
+    LIMIT 1
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;

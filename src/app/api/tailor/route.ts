@@ -405,6 +405,18 @@ export async function POST(request: NextRequest) {
 
     // Authenticated users get full results
     if (isAuthenticated) {
+      // Update usage history with scores (fire-and-forget)
+      if (supabase && userId) {
+        supabase
+          .from("usage_history")
+          .update({ before_score: beforeScore, after_score: afterScore })
+          .eq("user_id", userId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .then(({ error }) => {
+            if (error) console.debug("Failed to update usage scores:", error.message);
+          });
+      }
       return NextResponse.json({ ...result, beforeScore, afterScore });
     }
 

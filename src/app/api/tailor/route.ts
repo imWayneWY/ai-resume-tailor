@@ -405,6 +405,18 @@ export async function POST(request: NextRequest) {
 
     // Authenticated users get full results
     if (isAuthenticated) {
+      // Update usage history with scores via RPC (fire-and-forget).
+      // Uses SECURITY DEFINER function so no UPDATE RLS policy needed.
+      if (supabase && userId) {
+        supabase
+          .rpc("update_latest_usage_scores", {
+            p_before_score: beforeScore,
+            p_after_score: afterScore,
+          })
+          .then(({ error }: { error: { message: string } | null }) => {
+            if (error) console.debug("Failed to update usage scores:", error.message);
+          });
+      }
       return NextResponse.json({ ...result, beforeScore, afterScore });
     }
 

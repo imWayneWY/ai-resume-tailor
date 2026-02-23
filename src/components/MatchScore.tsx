@@ -9,6 +9,10 @@ interface MatchScoreProps {
   jobDescription: string;
   /** LLM-extracted keywords from /api/extract-keywords. Falls back to regex extraction if not provided. */
   llmKeywords?: string[];
+  /** Server-computed before score (0-100). Used for redacted results where client can't compute. */
+  serverBeforeScore?: number;
+  /** Server-computed after score (0-100). Used for redacted results where client can't compute. */
+  serverAfterScore?: number;
 }
 
 function ScoreCircle({
@@ -77,6 +81,8 @@ export default function MatchScore({
   tailoredResume,
   jobDescription,
   llmKeywords,
+  serverBeforeScore,
+  serverAfterScore,
 }: MatchScoreProps) {
   // Use LLM-extracted keywords if available, otherwise fall back to regex
   const jdKeywords = useMemo(() => {
@@ -86,44 +92,50 @@ export default function MatchScore({
     return extractKeywords(jobDescription);
   }, [jobDescription, llmKeywords]);
 
+  // Prefer server-computed scores (needed for redacted results where client text is gibberish)
+  const hasServerScores = typeof serverBeforeScore === "number" && typeof serverAfterScore === "number";
+
+  // Only compute client-side scores when server scores aren't available
   const beforeScore = useMemo(
-    () => calculateMatchScore(originalResume, jdKeywords),
-    [originalResume, jdKeywords]
+    () => hasServerScores ? null : calculateMatchScore(originalResume, jdKeywords),
+    [originalResume, jdKeywords, hasServerScores]
   );
 
   const afterScore = useMemo(
-    () => calculateMatchScore(tailoredResume, jdKeywords),
-    [tailoredResume, jdKeywords]
+    () => hasServerScores ? null : calculateMatchScore(tailoredResume, jdKeywords),
+    [tailoredResume, jdKeywords, hasServerScores]
   );
-
-  const improvement = afterScore.matchCount - beforeScore.matchCount;
 
   const usingLlm = !!(llmKeywords && llmKeywords.length > 0);
 
-  // Compute 0-100 scores (no % symbol — just numbers)
+  // Compute 0-100 scores
   const totalKw = jdKeywords.size;
-  const beforeScoreNum = totalKw > 0 ? Math.round((beforeScore.matchCount / totalKw) * 100) : 0;
-  const afterScoreNum = totalKw > 0 ? Math.round((afterScore.matchCount / totalKw) * 100) : 0;
+  const beforeScoreNum = hasServerScores ? serverBeforeScore : (totalKw > 0 && beforeScore ? Math.round((beforeScore.matchCount / totalKw) * 100) : 0);
+  const afterScoreNum = hasServerScores ? serverAfterScore : (totalKw > 0 && afterScore ? Math.round((afterScore.matchCount / totalKw) * 100) : 0);
   const scoreImprovement = afterScoreNum - beforeScoreNum;
 
-  // Log keywords to browser console for inspection (use console.debug to reduce noise)
+  // Log keywords to browser console for inspection (only when doing client-side scoring)
   useEffect(() => {
+    if (hasServerScores) {
+      console.debug(`[MatchScore] Using server-computed scores (before=${serverBeforeScore}, after=${serverAfterScore})`);
+      return;
+    }
     console.debug(
       `[MatchScore] Using ${usingLlm ? "LLM" : "regex"}-extracted keywords (${jdKeywords.size} total)`
     );
-    if (afterScore.matchedKeywords.length > 0) {
+    if (afterScore && afterScore.matchedKeywords.length > 0) {
       console.debug(
         "[MatchScore] Matched keywords:",
         afterScore.matchedKeywords.join(", ")
       );
     }
-    if (afterScore.missedKeywords.length > 0) {
+    if (afterScore && afterScore.missedKeywords.length > 0) {
       console.debug(
         "[MatchScore] Unmatched keywords:",
         afterScore.missedKeywords.join(", ")
       );
     }
-  }, [afterScore.matchedKeywords, afterScore.missedKeywords, jdKeywords.size, usingLlm]);
+  }, [afterScore, hasServerScores, serverBeforeScore, serverAfterScore, jdKeywords.size, usingLlm]);
 
   return (
     <div className="rounded-lg border border-border bg-white p-4 shadow-sm sm:p-6">

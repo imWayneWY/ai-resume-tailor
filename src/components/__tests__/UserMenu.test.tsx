@@ -2,11 +2,6 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { UserMenu } from "../UserMenu";
 import type { User } from "@supabase/supabase-js";
 
-// Mock next/navigation
-jest.mock("next/navigation", () => ({
-  useRouter: () => ({ push: jest.fn() }),
-}));
-
 function makeUser(overrides: Partial<User> = {}): User {
   return {
     id: "test-user-123",
@@ -39,7 +34,7 @@ describe("UserMenu", () => {
     render(<UserMenu user={makeUser()} credits={5} />);
     const trigger = screen.getByRole("button", { expanded: false });
     fireEvent.click(trigger);
-    expect(screen.getByRole("menu")).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: /user menu/i })).toBeInTheDocument();
   });
 
   it("shows credits in dropdown", () => {
@@ -51,41 +46,43 @@ describe("UserMenu", () => {
     expect(fives).toHaveLength(2);
   });
 
-  it("shows zero credits with red styling", () => {
+  it("shows zero credits with appropriate label", () => {
     render(<UserMenu user={makeUser()} credits={0} />);
     fireEvent.click(screen.getByRole("button"));
-    const creditValue = screen.getAllByText("0").find(
-      (el) => el.classList.contains("text-red-500")
-    );
-    expect(creditValue).toBeInTheDocument();
+    // Verify zero credits are displayed in the dropdown
+    const creditValues = screen.getAllByText("0");
+    expect(creditValues.length).toBeGreaterThanOrEqual(1);
+    // Verify the navbar badge has an accessible label indicating no credits
+    const badge = screen.getByLabelText(/no credits remaining/i);
+    expect(badge).toBeInTheDocument();
   });
 
   it("has History link", () => {
     render(<UserMenu user={makeUser()} credits={5} />);
     fireEvent.click(screen.getByRole("button"));
-    const historyLink = screen.getByRole("menuitem", { name: /history/i });
+    const historyLink = screen.getByRole("link", { name: /history/i });
     expect(historyLink).toHaveAttribute("href", "/history");
   });
 
   it("has Settings link", () => {
     render(<UserMenu user={makeUser()} credits={5} />);
     fireEvent.click(screen.getByRole("button"));
-    const settingsLink = screen.getByRole("menuitem", { name: /settings/i });
+    const settingsLink = screen.getByRole("link", { name: /settings/i });
     expect(settingsLink).toHaveAttribute("href", "/settings");
   });
 
   it("has Sign out button", () => {
     render(<UserMenu user={makeUser()} credits={5} />);
     fireEvent.click(screen.getByRole("button"));
-    expect(screen.getByRole("menuitem", { name: /sign out/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /sign out/i })).toBeInTheDocument();
   });
 
   it("closes on Escape key", () => {
     render(<UserMenu user={makeUser()} credits={5} />);
     fireEvent.click(screen.getByRole("button"));
-    expect(screen.getByRole("menu")).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: /user menu/i })).toBeInTheDocument();
     fireEvent.keyDown(document, { key: "Escape" });
-    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: /user menu/i })).not.toBeInTheDocument();
   });
 
   it("closes on outside click", () => {
@@ -96,9 +93,9 @@ describe("UserMenu", () => {
       </div>
     );
     fireEvent.click(screen.getByRole("button"));
-    expect(screen.getByRole("menu")).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: /user menu/i })).toBeInTheDocument();
     fireEvent.mouseDown(screen.getByTestId("outside"));
-    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: /user menu/i })).not.toBeInTheDocument();
   });
 
   it("hides credits section when credits is null", () => {

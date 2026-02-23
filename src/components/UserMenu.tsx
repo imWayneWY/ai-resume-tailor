@@ -45,7 +45,7 @@ export function UserMenu({ user, credits }: UserMenuProps) {
         onClick={() => setOpen(!open)}
         className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-surface-alt"
         aria-expanded={open}
-        aria-haspopup="true"
+        aria-haspopup="menu"
       >
         {/* User avatar circle */}
         <span className="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-xs font-semibold text-white">
@@ -55,16 +55,31 @@ export function UserMenu({ user, credits }: UserMenuProps) {
           {email}
         </span>
         {/* Credits badge — always visible in navbar */}
-        {credits !== null && (
+        {credits !== null ? (
           <span
             className={`rounded-full px-1.5 py-0.5 text-xs font-medium ${
               credits > 0
                 ? "bg-accent/10 text-accent"
                 : "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400"
             }`}
+            aria-label={
+              credits > 0
+                ? `${credits} credit${credits === 1 ? "" : "s"} remaining`
+                : "No credits remaining"
+            }
+            title={
+              credits > 0
+                ? `${credits} credit${credits === 1 ? "" : "s"} remaining`
+                : "No credits remaining"
+            }
           >
             {credits}
           </span>
+        ) : (
+          <span
+            className="h-4 w-6 animate-pulse rounded-full bg-muted/30"
+            aria-label="Loading credits"
+          />
         )}
         {/* Chevron */}
         <svg
@@ -81,7 +96,8 @@ export function UserMenu({ user, credits }: UserMenuProps) {
       {open && (
         <div
           className="absolute right-0 z-50 mt-1 w-56 rounded-lg border border-border bg-surface shadow-lg"
-          role="menu"
+          role="dialog"
+          aria-label="User menu"
         >
           {/* Email display */}
           <div className="border-b border-border px-4 py-3">
@@ -109,7 +125,6 @@ export function UserMenu({ user, credits }: UserMenuProps) {
             <Link
               href="/history"
               className="flex items-center gap-2 px-4 py-2 text-sm text-foreground transition-colors hover:bg-surface-alt"
-              role="menuitem"
               onClick={() => setOpen(false)}
             >
               <svg className="h-4 w-4 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -120,7 +135,6 @@ export function UserMenu({ user, credits }: UserMenuProps) {
             <Link
               href="/settings"
               className="flex items-center gap-2 px-4 py-2 text-sm text-foreground transition-colors hover:bg-surface-alt"
-              role="menuitem"
               onClick={() => setOpen(false)}
             >
               <svg className="h-4 w-4 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -137,7 +151,6 @@ export function UserMenu({ user, credits }: UserMenuProps) {
               <button
                 type="submit"
                 className="flex w-full items-center gap-2 px-4 py-2 text-sm text-red-500 transition-colors hover:bg-surface-alt"
-                role="menuitem"
               >
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />

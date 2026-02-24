@@ -35,9 +35,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   // Read saved preference on mount
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY) as Theme | null;
-    if (saved === "light" || saved === "dark" || saved === "system") {
-      setThemeState(saved);
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY) as Theme | null;
+      if (saved === "light" || saved === "dark" || saved === "system") {
+        setThemeState(saved);
+      }
+    } catch {
+      // Ignore storage errors (e.g., disabled or private browsing)
     }
   }, []);
 
@@ -64,7 +68,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const setTheme = useCallback((newTheme: Theme) => {
     setThemeState(newTheme);
-    localStorage.setItem(STORAGE_KEY, newTheme);
+    try {
+      localStorage.setItem(STORAGE_KEY, newTheme);
+    } catch {
+      // Ignore storage errors (e.g., disabled or quota exceeded)
+    }
   }, []);
 
   const value = useMemo(

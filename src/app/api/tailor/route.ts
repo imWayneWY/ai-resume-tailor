@@ -460,7 +460,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ...result, beforeScore: beforeScoreDisplay, afterScore: afterScoreDisplay });
     }
 
-    // Unauthenticated users get redacted results with real scores
+    // Unauthenticated users get redacted results with curved display scores
+    // (raw scores are only persisted to usage_history above)
     const redacted = {
       ...result,
       sections: redactSections(result.sections),

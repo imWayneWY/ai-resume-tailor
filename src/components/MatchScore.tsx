@@ -114,9 +114,10 @@ export default function MatchScore({
 
   // Compute 0-100 scores (curved for intuitive display)
   const totalKw = jdKeywords.size;
-  // Server scores are already curved, so use them directly
-  const beforeScoreNum = hasServerScores ? serverBeforeScore : curveScore(totalKw > 0 && beforeScore ? Math.round((beforeScore.matchCount / totalKw) * 100) : 0);
-  const afterScoreNum = hasServerScores ? serverAfterScore : curveScore(totalKw > 0 && afterScore ? Math.round((afterScore.matchCount / totalKw) * 100) : 0);
+  // Server scores arrive pre-curved from /api/tailor (raw scores are only stored in DB).
+  // Client-side fallback computes raw percentage then curves it here.
+  const beforeScoreNum = hasServerScores ? serverBeforeScore! : curveScore(totalKw > 0 && beforeScore ? Math.round((beforeScore.matchCount / totalKw) * 100) : 0);
+  const afterScoreNum = hasServerScores ? serverAfterScore! : curveScore(totalKw > 0 && afterScore ? Math.round((afterScore.matchCount / totalKw) * 100) : 0);
   const scoreImprovement = afterScoreNum - beforeScoreNum;
 
   // Log keywords to browser console for inspection (only when doing client-side scoring)

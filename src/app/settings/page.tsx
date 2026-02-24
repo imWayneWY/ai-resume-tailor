@@ -1,4 +1,9 @@
-"use client";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Settings | AI Resume Tailor",
+  description: "Configure your AI Resume Tailor preferences.",
+};
 
 export default function SettingsPage() {
   return (

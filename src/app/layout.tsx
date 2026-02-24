@@ -4,16 +4,54 @@ import "./globals.css";
 import { Navbar } from "@/components/Navbar";
 import { CreditsProvider } from "@/components/CreditsProvider";
 
-// TODO: Add a custom favicon — currently using default Next.js favicon.ico
+const BASE_URL =
+  process.env.NEXT_PUBLIC_SITE_URL ??
+  "https://ai-resume-tailor-blond.vercel.app";
+
 export const metadata: Metadata = {
-  title: "AI Resume Tailor",
+  metadataBase: new URL(BASE_URL),
+  title: {
+    default: "AI Resume Tailor — Tailor Your Resume for Any Job in Seconds",
+    template: "%s | AI Resume Tailor",
+  },
   description:
-    "Tailor your resume to any job description in seconds using AI.",
+    "Upload your resume and paste a job description. AI tailors it for ATS optimization in seconds — keyword matching, professional formatting, and match score included. Free to try.",
+  keywords: [
+    "AI resume tailor",
+    "ATS resume optimizer",
+    "resume keyword matcher",
+    "tailor resume to job description",
+    "AI resume builder",
+    "resume score checker",
+    "job application tool",
+  ],
   openGraph: {
-    title: "AI Resume Tailor",
+    title: "AI Resume Tailor — Tailor Your Resume for Any Job in Seconds",
     description:
-      "Tailor your resume to any job description in seconds using AI.",
+      "Upload your resume and paste a job description. AI tailors it for ATS optimization in seconds.",
     type: "website",
+    url: BASE_URL,
+    siteName: "AI Resume Tailor",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "AI Resume Tailor — Tailor Your Resume for Any Job in Seconds",
+    description:
+      "Upload your resume and paste a job description. AI tailors it for ATS optimization in seconds.",
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-video-preview": -1,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+    },
+  },
+  alternates: {
+    canonical: BASE_URL,
   },
 };
 

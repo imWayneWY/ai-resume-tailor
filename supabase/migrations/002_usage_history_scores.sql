@@ -3,6 +3,10 @@ ALTER TABLE public.usage_history
   ADD COLUMN IF NOT EXISTS before_score INTEGER,
   ADD COLUMN IF NOT EXISTS after_score INTEGER;
 
+-- Drop the old 1-param version before creating the new 3-param version
+-- (PostgreSQL treats different param lists as separate overloaded functions)
+DROP FUNCTION IF EXISTS deduct_credit(text);
+
 -- Update deduct_credit to accept and store scores
 CREATE OR REPLACE FUNCTION deduct_credit(
   p_jd_snippet TEXT DEFAULT NULL,

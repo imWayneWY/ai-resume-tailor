@@ -3,6 +3,13 @@ import { cleanSections, cleanAiPhrases } from "@/lib/ai-phrase-cleaner";
 import { redactSections, redactPersonalInfo } from "@/lib/redact";
 import { createClient } from "@/lib/supabase/server";
 import { extractKeywords, calculateMatchScore } from "@/lib/keyword-matcher";
+import { createRateLimiter, getClientIp } from "@/lib/rate-limit";
+
+// Rate limiters: stricter for unauthenticated users (5/min) vs authenticated (20/min)
+const unauthLimiter = createRateLimiter({ limit: 5, windowMs: 60_000 });
+const authLimiter = createRateLimiter({ limit: 20, windowMs: 60_000 });
+// Global rate limiter: cheap early check before JSON parsing and auth (50 req/min per IP)
+const globalLimiter = createRateLimiter({ limit: 50, windowMs: 60_000 });
 
 const API_VERSION = "2025-01-01-preview";
 
@@ -293,6 +300,16 @@ function parseAndValidateResponse(text: string): NextResponse | ParsedResult {
 }
 
 export async function POST(request: NextRequest) {
+  // Early rate limit — cheap IP-only check before expensive JSON parsing and auth
+  const clientIp = getClientIp(request);
+  const globalCheck = globalLimiter.check(clientIp);
+  if (!globalCheck.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Please try again later." },
+      { status: 429 }
+    );
+  }
+
   let body: unknown;
   try {
     body = await request.json();
@@ -321,10 +338,18 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const MAX_INPUT_LENGTH = 50_000;
-  if (body.resume.length > MAX_INPUT_LENGTH || body.jobDescription.length > MAX_INPUT_LENGTH) {
+  // Input size validation — resume max 50k chars, JD max 20k chars
+  const MAX_RESUME_LENGTH = 50_000;
+  const MAX_JD_LENGTH = 20_000;
+  if (body.resume.length > MAX_RESUME_LENGTH) {
     return NextResponse.json(
-      { error: `Input too large. Resume and job description must each be under ${MAX_INPUT_LENGTH.toLocaleString()} characters.` },
+      { error: `Resume too large (max ${MAX_RESUME_LENGTH.toLocaleString()} characters).` },
+      { status: 400 }
+    );
+  }
+  if (body.jobDescription.length > MAX_JD_LENGTH) {
+    return NextResponse.json(
+      { error: `Job description too large (max ${MAX_JD_LENGTH.toLocaleString()} characters).` },
       { status: 400 }
     );
   }
@@ -343,6 +368,16 @@ export async function POST(request: NextRequest) {
     userId = user?.id ?? null;
   } catch {
     // Auth check failed — treat as unauthenticated
+  }
+
+  // Rate limiting — different limits for authenticated vs unauthenticated users
+  const limiter = isAuthenticated ? authLimiter : unauthLimiter;
+  const rateLimitResult = limiter.check(clientIp);
+  if (!rateLimitResult.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Please try again later." },
+      { status: 429 }
+    );
   }
 
   // Authenticated users must have credits

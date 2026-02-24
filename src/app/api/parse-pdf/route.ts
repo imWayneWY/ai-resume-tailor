@@ -1,11 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
 import { extractText, getDocumentProxy } from "unpdf";
+import { createRateLimiter, getClientIp } from "@/lib/rate-limit";
+
+/**
+ * SECURITY NOTE: This endpoint is intentionally public (no auth required).
+ * Unauthenticated users need PDF parsing for the resume upload preview flow
+ * before they sign up. It is protected by IP-based rate limiting (10 req/min).
+ * The endpoint performs CPU-only work (no external API calls) so the abuse
+ * cost is lower than the AI endpoints, but rate limiting still prevents DoS.
+ */
+
+const rateLimiter = createRateLimiter({ limit: 10, windowMs: 60_000 });
 
 export const runtime = "nodejs";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 export async function POST(request: NextRequest) {
+  // Rate limiting — 10 requests per minute per IP
+  const clientIp = getClientIp(request);
+  const rateLimitResult = rateLimiter.check(clientIp);
+  if (!rateLimitResult.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Please try again later." },
+      { status: 429 }
+    );
+  }
+
   let formData: FormData;
   try {
     formData = await request.formData();

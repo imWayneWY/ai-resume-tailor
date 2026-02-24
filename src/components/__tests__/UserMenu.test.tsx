@@ -2,6 +2,21 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { UserMenu } from "../UserMenu";
 import type { User } from "@supabase/supabase-js";
 
+// Mock next/navigation
+const mockPush = jest.fn();
+const mockRefresh = jest.fn();
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ push: mockPush, refresh: mockRefresh }),
+}));
+
+// Mock Supabase client
+const mockSignOut = jest.fn().mockResolvedValue({ error: null });
+jest.mock("@/lib/supabase/client", () => ({
+  createClient: () => ({
+    auth: { signOut: mockSignOut },
+  }),
+}));
+
 function makeUser(overrides: Partial<User> = {}): User {
   return {
     id: "test-user-123",
@@ -102,5 +117,17 @@ describe("UserMenu", () => {
     render(<UserMenu user={makeUser()} credits={null} />);
     fireEvent.click(screen.getByRole("button"));
     expect(screen.queryByText("Credits")).not.toBeInTheDocument();
+  });
+
+  it("calls signOut, push, and refresh when sign out is clicked", async () => {
+    render(<UserMenu user={makeUser()} credits={5} />);
+    fireEvent.click(screen.getByRole("button"));
+    const signOutBtn = screen.getByRole("button", { name: /sign out/i });
+    await fireEvent.click(signOutBtn);
+    // Wait for the async onClick
+    await new Promise((r) => setTimeout(r, 0));
+    expect(mockSignOut).toHaveBeenCalled();
+    expect(mockPush).toHaveBeenCalledWith("/");
+    expect(mockRefresh).toHaveBeenCalled();
   });
 });

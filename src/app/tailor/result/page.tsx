@@ -145,7 +145,7 @@ export default function ResultPage() {
     } catch {
       // ignore
     }
-  }, [editableSections, jobTitle, personalInfo]);
+  }, [editableSections, jobTitle, personalInfo, result]);
 
   const handleDownloadPdf = async () => {
     if (pdfGeneratingRef.current) return;

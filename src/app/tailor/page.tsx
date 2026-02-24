@@ -250,14 +250,14 @@ export default function TailorPage() {
                 : isDragging
                   ? "border-accent bg-accent/5"
                   : fileName
-                    ? "border-green-300 bg-green-50"
+                    ? "border-success-border bg-success-bg"
                     : "border-border bg-surface"
             }`}
           >
             {fileName ? (
               <>
                 <svg
-                  className="mb-2 h-8 w-8 text-green-500"
+                  className="mb-2 h-8 w-8 text-success-icon"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -270,8 +270,8 @@ export default function TailorPage() {
                     d="M5 13l4 4L19 7"
                   />
                 </svg>
-                <p className="text-sm font-medium text-green-700">{fileName}</p>
-                <p className="mt-1 text-xs text-green-600">Resume loaded successfully</p>
+                <p className="text-sm font-medium text-success-text">{fileName}</p>
+                <p className="mt-1 text-xs text-success-text">Resume loaded successfully</p>
                 <label className="mt-3 cursor-pointer text-xs font-medium text-accent hover:text-accent-hover">
                   Upload a different file
                   <input
@@ -350,7 +350,7 @@ export default function TailorPage() {
               </>
             )}
             {fileError && (
-              <p role="alert" className="mt-2 text-sm text-red-600">
+              <p role="alert" className="mt-2 text-sm text-error-text">
                 {fileError}
               </p>
             )}
@@ -369,7 +369,7 @@ export default function TailorPage() {
             onChange={(e) => setJobDescription(e.target.value)}
             placeholder="Paste the job description here..."
             disabled={isLoading}
-            className="h-64 resize-y rounded-lg border border-border bg-white p-4 text-sm leading-relaxed placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none disabled:opacity-50"
+            className="h-64 resize-y rounded-lg border border-border bg-card p-4 text-sm leading-relaxed placeholder:text-muted focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none disabled:opacity-50"
           />
 
           {/* Cover letter checkbox */}
@@ -389,7 +389,7 @@ export default function TailorPage() {
             {apiError && (
               <div
                 role="alert"
-                className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+                className="rounded-lg border border-error-border bg-error-bg px-4 py-3 text-sm text-error-text"
               >
                 {apiError}
               </div>

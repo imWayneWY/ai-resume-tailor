@@ -27,6 +27,13 @@ jest.mock("@/components/Navbar", () => ({
   Navbar: () => <nav data-testid="navbar">Navbar</nav>,
 }));
 
+// Mock the ThemeProvider since it's a client component using localStorage
+jest.mock("@/components/ThemeProvider", () => ({
+  ThemeProvider: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="theme-provider">{children}</div>
+  ),
+}));
+
 describe("Layout", () => {
   it("exports metadata with correct title and description", async () => {
     const { metadata } = await import("../layout");

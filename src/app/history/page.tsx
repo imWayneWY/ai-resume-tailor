@@ -53,7 +53,7 @@ function ScoreImprovement({
       {diff !== 0 && (
         <span
           className={`text-xs ${
-            improved ? "text-green-600 dark:text-green-400" : "text-red-500"
+            improved ? "text-success-text" : "text-error-text"
           }`}
         >
           ({diff > 0 ? "+" : ""}{diff})

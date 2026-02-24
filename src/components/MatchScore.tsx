@@ -52,7 +52,7 @@ function ScoreCircle({
             fill="none"
             stroke="currentColor"
             strokeWidth={strokeWidth}
-            className="text-gray-200"
+            className="text-score-track"
           />
           <circle
             cx={size / 2}
@@ -138,7 +138,7 @@ export default function MatchScore({
   }, [afterScore, hasServerScores, serverBeforeScore, serverAfterScore, jdKeywords.size, usingLlm]);
 
   return (
-    <div className="rounded-lg border border-border bg-white p-4 shadow-sm sm:p-6">
+    <div className="rounded-lg border border-border bg-card p-4 shadow-sm sm:p-6">
       <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-muted">
         JD Match Score
       </h2>
@@ -167,7 +167,7 @@ export default function MatchScore({
             />
           </svg>
           {scoreImprovement > 0 && (
-            <span className="text-xs font-semibold text-green-600">
+            <span className="text-xs font-semibold text-success-text">
               +{scoreImprovement}
             </span>
           )}

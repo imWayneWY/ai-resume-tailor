@@ -3,10 +3,7 @@ import type { ReactNode } from "react";
 import "./globals.css";
 import { Navbar } from "@/components/Navbar";
 import { CreditsProvider } from "@/components/CreditsProvider";
-
-const BASE_URL =
-  process.env.NEXT_PUBLIC_SITE_URL ??
-  "https://ai-resume-tailor-blond.vercel.app";
+import { BASE_URL } from "@/lib/config";
 
 export const metadata: Metadata = {
   metadataBase: new URL(BASE_URL),
@@ -49,9 +46,6 @@ export const metadata: Metadata = {
       "max-image-preview": "large",
       "max-snippet": -1,
     },
-  },
-  alternates: {
-    canonical: BASE_URL,
   },
 };
 

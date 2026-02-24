@@ -1,9 +1,6 @@
 import Link from "next/link";
 import { JsonLd } from "@/components/JsonLd";
-
-const BASE_URL =
-  process.env.NEXT_PUBLIC_SITE_URL ??
-  "https://ai-resume-tailor-blond.vercel.app";
+import { BASE_URL } from "@/lib/config";
 
 const jsonLd = {
   "@context": "https://schema.org",
@@ -118,7 +115,9 @@ export default function Home() {
                   key={f.title}
                   className="rounded-lg border border-border bg-card p-6"
                 >
-                  <div className="text-2xl">{f.icon}</div>
+                  <div className="text-2xl">
+                    <span role="img" aria-label={f.title}>{f.icon}</span>
+                  </div>
                   <h3 className="mt-3 text-base font-medium">{f.title}</h3>
                   <p className="mt-2 text-sm text-muted leading-relaxed">
                     {f.description}

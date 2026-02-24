@@ -7,11 +7,6 @@ jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: jest.fn(), refresh: jest.fn() }),
 }));
 
-// Mock ThemeToggle (it uses useTheme which needs ThemeProvider)
-jest.mock("@/components/ThemeToggle", () => ({
-  ThemeToggle: () => <button aria-label="System theme">Theme</button>,
-}));
-
 // Mock Supabase client
 const mockGetUser = jest.fn();
 const mockOnAuthStateChange = jest.fn().mockReturnValue({

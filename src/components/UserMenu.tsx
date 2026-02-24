@@ -153,8 +153,16 @@ export function UserMenu({ user, credits }: UserMenuProps) {
             <button
               type="button"
               onClick={async () => {
-                const supabase = createClient();
-                await supabase.auth.signOut();
+                try {
+                  const supabase = createClient();
+                  const { error } = await supabase.auth.signOut();
+                  if (error) {
+                    console.error("Sign out failed:", error.message);
+                    // Still redirect — stale session will be caught on next auth check
+                  }
+                } catch (err) {
+                  console.error("Sign out error:", err);
+                }
                 router.push("/");
                 router.refresh();
               }}

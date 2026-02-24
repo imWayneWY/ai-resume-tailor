@@ -31,6 +31,7 @@ interface RateLimitResult {
 export function createRateLimiter(options: RateLimiterOptions) {
   const { limit, windowMs = 60_000 } = options;
   const store = new Map<string, RateLimitEntry>();
+  let lastCleanup = 0;
 
   /** Remove expired timestamps and delete stale keys. */
   function cleanup(now: number) {
@@ -40,14 +41,15 @@ export function createRateLimiter(options: RateLimiterOptions) {
         store.delete(key);
       }
     }
+    lastCleanup = now;
   }
 
   /** Check (and record) a request for the given key. */
   function check(key: string): RateLimitResult {
     const now = Date.now();
 
-    // Lazy cleanup — run at most once every 60 s worth of calls
-    if (store.size > 1000) {
+    // Periodic cleanup — every 60 s or when store exceeds 500 entries
+    if (now - lastCleanup > 60_000 || store.size > 500) {
       cleanup(now);
     }
 
@@ -75,7 +77,11 @@ export function createRateLimiter(options: RateLimiterOptions) {
  * Extract a best-effort client IP from the request.
  *
  * Checks `x-forwarded-for` first (set by most reverse proxies / Vercel / Cloudflare),
- * then falls back to `x-real-ip`, and finally to a generic fallback.
+ * then falls back to `x-real-ip`, and finally to a unique-per-request fallback.
+ *
+ * TRUST NOTE: On Vercel (our deployment target), the platform itself sets
+ * x-forwarded-for from the true client IP — it cannot be spoofed by end users.
+ * If deploying behind a different proxy, ensure it strips/rewrites this header.
  */
 export function getClientIp(request: Request): string {
   const xff = request.headers.get("x-forwarded-for");
@@ -88,5 +94,7 @@ export function getClientIp(request: Request): string {
   const realIp = request.headers.get("x-real-ip");
   if (realIp) return realIp.trim();
 
-  return "unknown";
+  // Fallback: generate a unique key so unknown-IP requests don't share a bucket.
+  // This avoids one user's requests exhausting the limit for all unknown-IP users.
+  return `unknown-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }

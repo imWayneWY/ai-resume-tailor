@@ -76,8 +76,12 @@ describe("getClientIp", () => {
     expect(getClientIp(req)).toBe("1.2.3.4");
   });
 
-  it("returns 'unknown' when no IP headers are present", () => {
+  it("returns a unique fallback key when no IP headers are present", () => {
     const req = new Request("http://localhost");
-    expect(getClientIp(req)).toBe("unknown");
+    const ip = getClientIp(req);
+    expect(ip).toMatch(/^unknown-/);
+    // Each call should produce a different key
+    const req2 = new Request("http://localhost");
+    expect(getClientIp(req2)).not.toBe(ip);
   });
 });

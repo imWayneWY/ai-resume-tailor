@@ -8,6 +8,8 @@ import { createRateLimiter, getClientIp } from "@/lib/rate-limit";
 // Rate limiters: stricter for unauthenticated users (5/min) vs authenticated (20/min)
 const unauthLimiter = createRateLimiter({ limit: 5, windowMs: 60_000 });
 const authLimiter = createRateLimiter({ limit: 20, windowMs: 60_000 });
+// Global rate limiter: cheap early check before JSON parsing and auth (50 req/min per IP)
+const globalLimiter = createRateLimiter({ limit: 50, windowMs: 60_000 });
 
 const API_VERSION = "2025-01-01-preview";
 
@@ -298,6 +300,16 @@ function parseAndValidateResponse(text: string): NextResponse | ParsedResult {
 }
 
 export async function POST(request: NextRequest) {
+  // Early rate limit — cheap IP-only check before expensive JSON parsing and auth
+  const clientIp = getClientIp(request);
+  const globalCheck = globalLimiter.check(clientIp);
+  if (!globalCheck.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Please try again later." },
+      { status: 429 }
+    );
+  }
+
   let body: unknown;
   try {
     body = await request.json();
@@ -359,7 +371,6 @@ export async function POST(request: NextRequest) {
   }
 
   // Rate limiting — different limits for authenticated vs unauthenticated users
-  const clientIp = getClientIp(request);
   const limiter = isAuthenticated ? authLimiter : unauthLimiter;
   const rateLimitResult = limiter.check(clientIp);
   if (!rateLimitResult.allowed) {

@@ -23,7 +23,7 @@ export function ThemeToggle() {
   return (
     <button
       onClick={cycleTheme}
-      className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-alt hover:text-foreground"
+      className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-alt hover:text-foreground"
       aria-label={label}
       title={label}
     >

@@ -18,6 +18,9 @@
   --color-success-border: #bbf7d0;
   --color-success-text: #15803d;
   --color-success-icon: #22c55e;
+  --color-warning-bg: #fffbeb;
+  --color-warning-border: #fde68a;
+  --color-warning-text: #92400e;
   --color-overlay-bg: rgba(255, 255, 255, 0.95);
   --color-score-track: #e5e7eb;
 }
@@ -45,6 +48,9 @@ html {
   --color-success-border: #166534;
   --color-success-text: #86efac;
   --color-success-icon: #4ade80;
+  --color-warning-bg: #1c1a05;
+  --color-warning-border: #854d0e;
+  --color-warning-text: #fde68a;
   --color-overlay-bg: rgba(30, 41, 59, 0.95);
   --color-score-track: #334155;
 }

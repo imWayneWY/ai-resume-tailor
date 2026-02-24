@@ -1,7 +1,7 @@
 "use client";
 
 import type React from "react";
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -18,6 +18,35 @@ export default function TailorPage() {
   const [apiError, setApiError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [fileName, setFileName] = useState("");
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [credits, setCredits] = useState<number | null>(null);
+
+  // Check auth and fetch credits via single API call
+  useEffect(() => {
+    async function checkCredits() {
+      try {
+        const res = await fetch("/api/credits");
+        if (res.ok) {
+          const json = await res.json();
+          setIsAuthenticated(json.authenticated ?? false);
+          setCredits(json.authenticated ? (json.balance ?? 0) : null);
+        } else {
+          setIsAuthenticated(false);
+        }
+      } catch {
+        // Non-critical — let the API handle it
+        setIsAuthenticated(false);
+      }
+    }
+    checkCredits();
+
+    // Refresh when credits change (e.g. after tailoring)
+    function handleCreditsUpdated() {
+      checkCredits();
+    }
+    window.addEventListener("credits-updated", handleCreditsUpdated);
+    return () => window.removeEventListener("credits-updated", handleCreditsUpdated);
+  }, []);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -217,8 +246,9 @@ export default function TailorPage() {
     }
   };
 
+  const creditsOk = isAuthenticated === false || (credits !== null && credits > 0);
   const isReady =
-    resume.trim().length > 0 && jobDescription.trim().length > 0 && !isLoading && !isParsing;
+    resume.trim().length > 0 && jobDescription.trim().length > 0 && !isLoading && !isParsing && creditsOk;
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-12">
@@ -383,6 +413,13 @@ export default function TailorPage() {
             />
             <span className="text-muted">Generate cover letter too</span>
           </label>
+
+          {/* Credits warning */}
+          {isAuthenticated && credits === 0 && (
+            <div className="rounded-lg border border-warning-border bg-warning-bg px-4 py-3 text-sm text-warning-text">
+              You&apos;re out of credits. Purchase more to continue tailoring resumes.
+            </div>
+          )}
 
           {/* Error message */}
           <div aria-live="polite">

@@ -53,6 +53,14 @@ beforeEach(() => {
   sessionStorageMock.clear();
   sessionStorageMock.getItem.mockClear();
   sessionStorageMock.setItem.mockClear();
+
+  // Default: unauthenticated user (credits check on mount)
+  mockFetch.mockResolvedValueOnce(
+    createMockResponse(
+      JSON.stringify({ balance: null, authenticated: false }),
+      { status: 200, headers: { "content-type": "application/json" } }
+    )
+  );
 });
 
 afterEach(() => {

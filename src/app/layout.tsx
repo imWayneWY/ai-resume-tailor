@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import "./globals.css";
 import { Navbar } from "@/components/Navbar";
+import { CreditsProvider } from "@/components/CreditsProvider";
 
 // TODO: Add a custom favicon — currently using default Next.js favicon.ico
 export const metadata: Metadata = {
@@ -34,9 +35,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="flex min-h-screen flex-col antialiased">
-        <Navbar />
-        <div className="flex-1">{children}</div>
-        <Footer />
+        <CreditsProvider>
+          <Navbar />
+          <div className="flex-1">{children}</div>
+          <Footer />
+        </CreditsProvider>
       </body>
     </html>
   );

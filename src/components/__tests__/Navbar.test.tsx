@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { Navbar } from "../Navbar";
+import { CreditsProvider } from "../CreditsProvider";
 
 // Mock next/navigation
 jest.mock("next/navigation", () => ({
@@ -26,19 +27,27 @@ jest.mock("@/lib/supabase/client", () => ({
 const mockFetch = jest.fn();
 global.fetch = mockFetch;
 
+function renderNavbar() {
+  return render(
+    <CreditsProvider>
+      <Navbar />
+    </CreditsProvider>
+  );
+}
+
 describe("Navbar", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockFetch.mockResolvedValue({
       ok: true,
-      json: async () => ({ balance: 5 }),
+      json: async () => ({ authenticated: true, balance: 5 }),
     });
   });
 
   it("renders the app title", async () => {
     mockGetUser.mockResolvedValue({ data: { user: null } });
 
-    render(<Navbar />);
+    renderNavbar();
 
     expect(
       screen.getByRole("link", { name: /ai resume tailor/i })
@@ -47,8 +56,12 @@ describe("Navbar", () => {
 
   it("shows sign in link when not authenticated", async () => {
     mockGetUser.mockResolvedValue({ data: { user: null } });
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ authenticated: false }),
+    });
 
-    render(<Navbar />);
+    renderNavbar();
 
     const signInLink = await screen.findByRole("link", { name: /sign in/i });
     expect(signInLink).toHaveAttribute("href", "/auth/login");
@@ -65,16 +78,19 @@ describe("Navbar", () => {
       },
     });
 
-    render(<Navbar />);
+    renderNavbar();
 
-    // UserMenu shows email
     expect(await screen.findByText("test@example.com")).toBeInTheDocument();
   });
 
   it("shows Get Started link on non-tailor pages", async () => {
     mockGetUser.mockResolvedValue({ data: { user: null } });
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ authenticated: false }),
+    });
 
-    render(<Navbar />);
+    renderNavbar();
 
     await screen.findByRole("link", { name: /sign in/i });
     expect(
@@ -82,16 +98,7 @@ describe("Navbar", () => {
     ).toBeInTheDocument();
   });
 
-  it("does not fetch credits when unauthenticated", async () => {
-    mockGetUser.mockResolvedValue({ data: { user: null } });
-
-    render(<Navbar />);
-
-    await screen.findByRole("link", { name: /sign in/i });
-    expect(mockFetch).not.toHaveBeenCalled();
-  });
-
-  it("fetches credits when authenticated", async () => {
+  it("fetches credits via CreditsProvider on mount", async () => {
     mockGetUser.mockResolvedValue({
       data: {
         user: {
@@ -102,9 +109,10 @@ describe("Navbar", () => {
       },
     });
 
-    render(<Navbar />);
+    renderNavbar();
 
     await screen.findByText("test@example.com");
+    // CreditsProvider fetches credits on mount
     expect(mockFetch).toHaveBeenCalledWith("/api/credits");
   });
 
@@ -120,7 +128,7 @@ describe("Navbar", () => {
     });
     mockFetch.mockRejectedValueOnce(new Error("Network error"));
 
-    render(<Navbar />);
+    renderNavbar();
 
     // Should still show user email without crashing
     expect(await screen.findByText("test@example.com")).toBeInTheDocument();

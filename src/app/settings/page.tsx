@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Settings | AI Resume Tailor",
+  title: "Settings",
   description: "Configure your AI Resume Tailor preferences.",
 };
 

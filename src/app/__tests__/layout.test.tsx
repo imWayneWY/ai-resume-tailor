@@ -27,11 +27,17 @@ jest.mock("@/components/Navbar", () => ({
   Navbar: () => <nav data-testid="navbar">Navbar</nav>,
 }));
 
+// Mock the CreditsProvider
+jest.mock("@/components/CreditsProvider", () => ({
+  CreditsProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+
 describe("Layout", () => {
   it("exports metadata with correct title and description", async () => {
     const { metadata } = await import("../layout");
-    expect(metadata.title).toBe("AI Resume Tailor");
-    expect(metadata.description).toMatch(/tailor your resume/i);
+    const title = metadata.title as { default: string; template: string };
+    expect(title.default).toMatch(/ai resume tailor/i);
+    expect(metadata.description).toMatch(/tailor/i);
   });
 
   it("exports metadata with openGraph", async () => {
@@ -41,8 +47,16 @@ describe("Layout", () => {
       description: string;
       type: string;
     };
-    expect(og.title).toBe("AI Resume Tailor");
+    expect(og.title).toMatch(/ai resume tailor/i);
     expect(og.type).toBe("website");
+  });
+
+  it("exports metadata with keywords and twitter card", async () => {
+    const { metadata } = await import("../layout");
+    expect(Array.isArray(metadata.keywords)).toBe(true);
+    expect((metadata.keywords as string[]).length).toBeGreaterThan(0);
+    const twitter = metadata.twitter as { card: string };
+    expect(twitter.card).toBe("summary_large_image");
   });
 
   it("default export is a function (React component)", async () => {

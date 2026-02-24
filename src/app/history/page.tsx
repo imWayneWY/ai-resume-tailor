@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { curveScore, scoreLabel } from "@/lib/score-curve";
 
 interface HistoryEntry {
   id: string;
@@ -40,15 +41,19 @@ function ScoreImprovement({
     return <span className="text-muted">—</span>;
   }
 
-  const improved = after > before;
-  const diff = after - before;
+  // Curve raw DB scores for display
+  const curvedBefore = curveScore(before);
+  const curvedAfter = curveScore(after);
+  const improved = curvedAfter > curvedBefore;
+  const diff = curvedAfter - curvedBefore;
+  const afterLabel = scoreLabel(curvedAfter);
 
   return (
     <span className="inline-flex items-center gap-1.5">
-      <span className="text-muted">{before}</span>
+      <span className="text-muted">{curvedBefore}</span>
       <span className="text-muted">→</span>
       <span className={improved ? "font-semibold text-accent" : "text-foreground"}>
-        {after}
+        {curvedAfter}
       </span>
       {diff !== 0 && (
         <span
@@ -59,6 +64,7 @@ function ScoreImprovement({
           ({diff > 0 ? "+" : ""}{diff})
         </span>
       )}
+      <span className="text-xs text-muted">· {afterLabel}</span>
     </span>
   );
 }

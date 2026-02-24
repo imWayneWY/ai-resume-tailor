@@ -3,6 +3,7 @@ import { cleanSections, cleanAiPhrases } from "@/lib/ai-phrase-cleaner";
 import { redactSections, redactPersonalInfo } from "@/lib/redact";
 import { createClient } from "@/lib/supabase/server";
 import { extractKeywords, calculateMatchScore } from "@/lib/keyword-matcher";
+import { curveScore } from "@/lib/score-curve";
 import { createRateLimiter, getClientIp } from "@/lib/rate-limit";
 
 // Rate limiters: stricter for unauthenticated users (5/min) vs authenticated (20/min)
@@ -438,6 +439,10 @@ export async function POST(request: NextRequest) {
     const beforeScore = totalKw > 0 ? Math.round((beforeResult.matchCount / totalKw) * 100) : 0;
     const afterScore = totalKw > 0 ? Math.round((afterResult.matchCount / totalKw) * 100) : 0;
 
+    // Curve scores for user-facing display (raw stored in DB, curved returned to client)
+    const beforeScoreDisplay = curveScore(beforeScore);
+    const afterScoreDisplay = curveScore(afterScore);
+
     // Authenticated users get full results
     if (isAuthenticated) {
       // Update usage history with scores via RPC (fire-and-forget).
@@ -452,10 +457,11 @@ export async function POST(request: NextRequest) {
             if (error) console.debug("Failed to update usage scores:", error.message);
           });
       }
-      return NextResponse.json({ ...result, beforeScore, afterScore });
+      return NextResponse.json({ ...result, beforeScore: beforeScoreDisplay, afterScore: afterScoreDisplay });
     }
 
-    // Unauthenticated users get redacted results with real scores
+    // Unauthenticated users get redacted results with curved display scores
+    // (raw scores are only persisted to usage_history above)
     const redacted = {
       ...result,
       sections: redactSections(result.sections),
@@ -465,8 +471,8 @@ export async function POST(request: NextRequest) {
       // jobTitle intentionally NOT redacted — it comes from the JD (which the user provided), not the resume
       coverLetter: undefined, // Don't show cover letter at all
       redacted: true,
-      beforeScore,
-      afterScore,
+      beforeScore: beforeScoreDisplay,
+      afterScore: afterScoreDisplay,
     };
 
     return NextResponse.json(redacted);

@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import HistoryPage from "../page";
+import { curveScore } from "@/lib/score-curve";
 
 // Mock fetch
 const mockFetch = jest.fn();
@@ -44,7 +45,7 @@ describe("History page", () => {
     );
   });
 
-  it("renders history entries with scores", async () => {
+  it("renders history entries with curved scores", async () => {
     mockFetch.mockResolvedValueOnce({
       status: 200,
       ok: true,
@@ -63,13 +64,17 @@ describe("History page", () => {
     });
     render(<HistoryPage />);
 
+    const curvedBefore = curveScore(15);
+    const curvedAfter = curveScore(72);
+    const diff = curvedAfter - curvedBefore;
+
     expect(
       await screen.findByText("Senior React Developer needed...")
     ).toBeInTheDocument();
-    expect(screen.getByText("15")).toBeInTheDocument();
+    expect(screen.getByText(String(curvedBefore))).toBeInTheDocument();
     expect(screen.getByText("→")).toBeInTheDocument();
-    expect(screen.getByText("72")).toBeInTheDocument();
-    expect(screen.getByText("(+57)")).toBeInTheDocument();
+    expect(screen.getByText(String(curvedAfter))).toBeInTheDocument();
+    expect(screen.getByText(`(+${diff})`)).toBeInTheDocument();
   });
 
   it("shows dash when scores are null", async () => {
@@ -114,10 +119,14 @@ describe("History page", () => {
     });
     render(<HistoryPage />);
 
+    const curvedBefore = curveScore(65);
+    const curvedAfter = curveScore(40);
+    const diff = curvedAfter - curvedBefore;
+
     expect(await screen.findByText("QA Engineer role")).toBeInTheDocument();
-    expect(screen.getByText("65")).toBeInTheDocument();
-    expect(screen.getByText("40")).toBeInTheDocument();
-    expect(screen.getByText("(-25)")).toBeInTheDocument();
+    expect(screen.getByText(String(curvedBefore))).toBeInTheDocument();
+    expect(screen.getByText(String(curvedAfter))).toBeInTheDocument();
+    expect(screen.getByText(`(${diff})`)).toBeInTheDocument();
   });
 
   it("shows error on fetch failure", async () => {

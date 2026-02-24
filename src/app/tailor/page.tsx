@@ -211,9 +211,8 @@ export default function TailorPage() {
         );
       }
 
-      // Signal CreditsProvider to refresh
+      // Signal CreditsProvider to refresh (direct call — no event dispatch needed)
       refreshCredits();
-      window.dispatchEvent(new Event("credits-updated"));
 
       router.push("/tailor/result");
     } catch {

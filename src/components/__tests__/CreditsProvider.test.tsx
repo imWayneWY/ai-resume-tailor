@@ -36,13 +36,15 @@ describe("CreditsProvider", () => {
     expect(screen.getByTestId("loading")).toHaveTextContent("true");
 
     // After fetch resolves
-    expect(await screen.findByText("false")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId("loading")).toHaveTextContent("false");
+    });
     expect(screen.getByTestId("authenticated")).toHaveTextContent("true");
     expect(screen.getByTestId("credits")).toHaveTextContent("7");
   });
 
-  it("sets unauthenticated when API returns 401", async () => {
-    mockFetch.mockResolvedValueOnce({ ok: false, status: 401 });
+  it("sets unauthenticated when API returns non-OK status", async () => {
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 500 });
 
     render(
       <CreditsProvider>

@@ -32,12 +32,15 @@ export function CreditsProvider({ children }: { children: ReactNode }) {
         const data = await res.json();
         setIsAuthenticated(data.authenticated ?? false);
         setCredits(data.authenticated ? (data.balance ?? 0) : null);
-      } else if (res.status === 401) {
+      } else {
+        // 401, 500, etc. — treat as unauthenticated so the UI stays usable
         setIsAuthenticated(false);
         setCredits(null);
       }
     } catch {
-      // Non-critical
+      // Network error — treat as unauthenticated so submit isn't permanently blocked
+      setIsAuthenticated(false);
+      setCredits(null);
     } finally {
       setLoading(false);
     }

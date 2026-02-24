@@ -105,18 +105,11 @@
   - Consider adding a timeout wrapper around the PDF parsing operation.
   - Validate file size more strictly (current 10MB limit is generous for a resume).
 
-#### M3 — `dangerouslySetInnerHTML` in layout.tsx (theme script)
+#### M3 — ~~`dangerouslySetInnerHTML` in layout.tsx (theme script)~~ **RESOLVED**
 
-- **File:** `src/app/layout.tsx` (line 34)
-- **Description:** The layout uses `dangerouslySetInnerHTML` to inject a theme initialization script:
-  ```tsx
-  <script dangerouslySetInnerHTML={{ __html: themeScript }} />
-  ```
-  The script content is a hardcoded constant string (`themeScript`) — it does NOT include any user input or dynamic data. It only reads from `localStorage` (which is same-origin-only). **This is safe as currently implemented.**
-  
-  However, if this pattern is later modified to include any server-provided or user-provided data, it would become an XSS vector. The usage should be documented as "static-only" with a comment.
-- **Severity:** Medium (defense-in-depth concern)
-- **Recommended fix:** Add a comment `// SECURITY: This string must remain static — never interpolate user data` above the `themeScript` variable.
+- **Status:** Resolved — dark mode and the associated `dangerouslySetInnerHTML` theme script were completely removed in PR #49.
+- **Original file:** `src/app/layout.tsx`
+- **Resolution:** The `themeScript`, `dangerouslySetInnerHTML`, and `suppressHydrationWarning` were all deleted along with the entire dark mode feature. No `dangerouslySetInnerHTML` usage remains in the codebase.
 
 #### M4 — No input length validation on `/api/parse-pdf` filename
 
@@ -246,6 +239,6 @@ The redaction flow in `/api/tailor` is sound:
 2. **Immediate:** Rotate the Gemini API key found in `.env.local` (C1)
 3. **Soon:** Add CSRF protection to sign-out and form-data endpoints (H3)
 4. **Soon:** Add auth or rate limiting to `/api/extract-keywords` and `/api/parse-pdf` (M1, M2)
-5. **Later:** Add safety comments around `dangerouslySetInnerHTML` usage (M3)
+5. ~~**Later:** Add safety comments around `dangerouslySetInnerHTML` usage (M3)~~ — **Resolved in PR #49** (dark mode removed)
 6. **Later:** Document RLS design decisions in migration files (L1)
 7. **Later:** Fix `update_latest_usage_scores` race condition (L2)

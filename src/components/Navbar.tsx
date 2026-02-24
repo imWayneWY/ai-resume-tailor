@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { UserMenu } from "@/components/UserMenu";
-import { ThemeToggle } from "@/components/ThemeToggle";
 import type { User } from "@supabase/supabase-js";
 
 export function Navbar() {
@@ -85,7 +84,6 @@ export function Navbar() {
         <div className="flex items-center gap-3 sm:gap-4">
           {!loading && (
             <>
-              <ThemeToggle />
               {user ? (
                 <div className="flex items-center gap-3">
                   <UserMenu user={user} credits={credits} />

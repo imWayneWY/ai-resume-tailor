@@ -29,32 +29,6 @@ html {
   scroll-behavior: smooth;
 }
 
-/* Dark theme overrides */
-[data-theme="dark"] {
-  --color-background: #0f172a;
-  --color-foreground: #f1f5f9;
-  --color-surface: #1e293b;
-  --color-surface-alt: #334155;
-  --color-border: #334155;
-  --color-muted: #94a3b8;
-  --color-accent: #818cf8;
-  --color-accent-hover: #6366f1;
-  --color-card: #1e293b;
-  --color-input-bg: #1e293b;
-  --color-error-bg: #1c1017;
-  --color-error-border: #7f1d1d;
-  --color-error-text: #fca5a5;
-  --color-success-bg: #052e16;
-  --color-success-border: #166534;
-  --color-success-text: #86efac;
-  --color-success-icon: #4ade80;
-  --color-warning-bg: #1c1a05;
-  --color-warning-border: #854d0e;
-  --color-warning-text: #fde68a;
-  --color-overlay-bg: rgba(30, 41, 59, 0.95);
-  --color-score-track: #334155;
-}
-
 body {
   background: var(--color-background);
   color: var(--color-foreground);

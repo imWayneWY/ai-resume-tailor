@@ -2,6 +2,7 @@
 
 import { useMemo, useEffect } from "react";
 import { extractKeywords, calculateMatchScore } from "@/lib/keyword-matcher";
+import { curveScore, scoreLabel } from "@/lib/score-curve";
 
 interface MatchScoreProps {
   originalResume: string;
@@ -30,11 +31,13 @@ function ScoreCircle({
   const offset = circumference - (score / 100) * circumference;
 
   const color =
-    score >= 60
+    score >= 70
       ? "text-green-500"
-      : score >= 35
+      : score >= 50
         ? "text-yellow-500"
         : "text-red-500";
+
+  const strengthLabel = scoreLabel(score);
 
   return (
     <div className="flex flex-col items-center gap-1">
@@ -72,6 +75,7 @@ function ScoreCircle({
         </div>
       </div>
       <span className="text-xs font-medium text-muted">{label}</span>
+      <span className={`text-xs font-semibold ${color}`}>{strengthLabel}</span>
     </div>
   );
 }
@@ -108,10 +112,11 @@ export default function MatchScore({
 
   const usingLlm = !!(llmKeywords && llmKeywords.length > 0);
 
-  // Compute 0-100 scores
+  // Compute 0-100 scores (curved for intuitive display)
   const totalKw = jdKeywords.size;
-  const beforeScoreNum = hasServerScores ? serverBeforeScore : (totalKw > 0 && beforeScore ? Math.round((beforeScore.matchCount / totalKw) * 100) : 0);
-  const afterScoreNum = hasServerScores ? serverAfterScore : (totalKw > 0 && afterScore ? Math.round((afterScore.matchCount / totalKw) * 100) : 0);
+  // Server scores are already curved, so use them directly
+  const beforeScoreNum = hasServerScores ? serverBeforeScore : curveScore(totalKw > 0 && beforeScore ? Math.round((beforeScore.matchCount / totalKw) * 100) : 0);
+  const afterScoreNum = hasServerScores ? serverAfterScore : curveScore(totalKw > 0 && afterScore ? Math.round((afterScore.matchCount / totalKw) * 100) : 0);
   const scoreImprovement = afterScoreNum - beforeScoreNum;
 
   // Log keywords to browser console for inspection (only when doing client-side scoring)

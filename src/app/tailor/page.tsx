@@ -1,8 +1,9 @@
 "use client";
 
 import type React from "react";
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
@@ -18,6 +19,38 @@ export default function TailorPage() {
   const [apiError, setApiError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [fileName, setFileName] = useState("");
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [credits, setCredits] = useState<number | null>(null);
+
+  // Check auth and fetch credits
+  useEffect(() => {
+    async function checkCredits() {
+      try {
+        const supabase = createClient();
+        const { data } = await supabase.auth.getUser();
+        if (!data.user) {
+          setIsAuthenticated(false);
+          return;
+        }
+        setIsAuthenticated(true);
+        const res = await fetch("/api/credits");
+        if (res.ok) {
+          const json = await res.json();
+          setCredits(json.balance ?? 0);
+        }
+      } catch {
+        // Non-critical — let the API handle it
+      }
+    }
+    checkCredits();
+
+    // Refresh when credits change (e.g. after tailoring)
+    function handleCreditsUpdated() {
+      checkCredits();
+    }
+    window.addEventListener("credits-updated", handleCreditsUpdated);
+    return () => window.removeEventListener("credits-updated", handleCreditsUpdated);
+  }, []);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -217,8 +250,9 @@ export default function TailorPage() {
     }
   };
 
+  const hasCredits = isAuthenticated === false || credits === null || credits > 0;
   const isReady =
-    resume.trim().length > 0 && jobDescription.trim().length > 0 && !isLoading && !isParsing;
+    resume.trim().length > 0 && jobDescription.trim().length > 0 && !isLoading && !isParsing && hasCredits;
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-12">
@@ -383,6 +417,13 @@ export default function TailorPage() {
             />
             <span className="text-muted">Generate cover letter too</span>
           </label>
+
+          {/* Credits warning */}
+          {isAuthenticated && credits === 0 && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+              You&apos;re out of credits. Purchase more to continue tailoring resumes.
+            </div>
+          )}
 
           {/* Error message */}
           <div aria-live="polite">

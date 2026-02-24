@@ -4,6 +4,7 @@ import { Navbar } from "../Navbar";
 // Mock next/navigation
 jest.mock("next/navigation", () => ({
   usePathname: () => "/",
+  useRouter: () => ({ push: jest.fn(), refresh: jest.fn() }),
 }));
 
 // Mock ThemeToggle (it uses useTheme which needs ThemeProvider)

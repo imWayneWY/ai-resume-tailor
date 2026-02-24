@@ -3,6 +3,14 @@
  */
 import { POST } from "../route";
 
+// Mock rate limiter — always allow in tests
+jest.mock("@/lib/rate-limit", () => ({
+  createRateLimiter: () => ({
+    check: () => ({ allowed: true, remaining: 99 }),
+  }),
+  getClientIp: () => "127.0.0.1",
+}));
+
 // ---------- helpers ----------
 
 function makeRequest(body: unknown) {
@@ -87,7 +95,7 @@ describe("POST /api/extract-keywords", () => {
 
     it("returns 400 when input exceeds max length", async () => {
       const res = await POST(
-        makeRequest({ jobDescription: "x".repeat(50_001) })
+        makeRequest({ jobDescription: "x".repeat(20_001) })
       );
       expect(res.status).toBe(400);
       const body = await res.json();

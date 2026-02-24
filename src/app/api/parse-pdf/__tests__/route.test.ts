@@ -3,6 +3,14 @@
  */
 import { POST } from "../route";
 
+// Mock rate limiter — always allow in tests
+jest.mock("@/lib/rate-limit", () => ({
+  createRateLimiter: () => ({
+    check: () => ({ allowed: true, remaining: 99 }),
+  }),
+  getClientIp: () => "127.0.0.1",
+}));
+
 // ---------- mock unpdf ----------
 
 const mockGetDocumentProxy = jest.fn();

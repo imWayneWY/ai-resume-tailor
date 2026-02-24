@@ -5,6 +5,14 @@ import { POST } from "../route";
 
 // ---------- mocks ----------
 
+// Mock rate limiter — always allow in tests
+jest.mock("@/lib/rate-limit", () => ({
+  createRateLimiter: () => ({
+    check: () => ({ allowed: true, remaining: 99 }),
+  }),
+  getClientIp: () => "127.0.0.1",
+}));
+
 // Mock Supabase server client — default: authenticated user
 const mockGetUser = jest.fn().mockResolvedValue({
   data: { user: { id: "test-user-123" } },
@@ -181,7 +189,7 @@ describe("POST /api/tailor", () => {
     expect(res.status).toBe(400);
   });
 
-  it("returns 400 when resume exceeds MAX_INPUT_LENGTH", async () => {
+  it("returns 400 when resume exceeds MAX_RESUME_LENGTH", async () => {
     const longString = "x".repeat(50_001);
     const res = await POST(
       makeRequest({ resume: longString, jobDescription: "desc", generateCoverLetter: false })
@@ -191,8 +199,8 @@ describe("POST /api/tailor", () => {
     expect(json.error).toMatch(/too large/i);
   });
 
-  it("returns 400 when jobDescription exceeds MAX_INPUT_LENGTH", async () => {
-    const longString = "x".repeat(50_001);
+  it("returns 400 when jobDescription exceeds MAX_JD_LENGTH", async () => {
+    const longString = "x".repeat(20_001);
     const res = await POST(
       makeRequest({ resume: "resume", jobDescription: longString, generateCoverLetter: false })
     );

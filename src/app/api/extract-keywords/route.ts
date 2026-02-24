@@ -1,4 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createRateLimiter, getClientIp } from "@/lib/rate-limit";
+
+/**
+ * SECURITY NOTE: This endpoint is intentionally public (no auth required).
+ * Unauthenticated users need keyword extraction for the preview flow before
+ * they sign up. It is protected by IP-based rate limiting (10 req/min) to
+ * prevent abuse of the underlying Azure OpenAI API call.
+ */
+
+const rateLimiter = createRateLimiter({ limit: 10, windowMs: 60_000 });
 
 const API_VERSION = "2025-01-01-preview";
 
@@ -39,6 +49,16 @@ function buildAzureUrl(endpoint: string, deployment: string): string {
 }
 
 export async function POST(request: NextRequest) {
+  // Rate limiting — 10 requests per minute per IP
+  const clientIp = getClientIp(request);
+  const rateLimitResult = rateLimiter.check(clientIp);
+  if (!rateLimitResult.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Please try again later." },
+      { status: 429 }
+    );
+  }
+
   let body: unknown;
   try {
     body = await request.json();
@@ -68,7 +88,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const MAX_INPUT_LENGTH = 50_000;
+  const MAX_INPUT_LENGTH = 20_000;
   if (b.jobDescription.length > MAX_INPUT_LENGTH) {
     return NextResponse.json(
       { error: `Job description too large (max ${MAX_INPUT_LENGTH.toLocaleString()} characters).` },

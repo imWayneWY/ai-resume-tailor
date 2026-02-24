@@ -2,6 +2,21 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { UserMenu } from "../UserMenu";
 import type { User } from "@supabase/supabase-js";
 
+// Mock next/navigation
+const mockPush = jest.fn();
+const mockRefresh = jest.fn();
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ push: mockPush, refresh: mockRefresh }),
+}));
+
+// Mock Supabase client
+const mockSignOut = jest.fn().mockResolvedValue({ error: null });
+jest.mock("@/lib/supabase/client", () => ({
+  createClient: () => ({
+    auth: { signOut: mockSignOut },
+  }),
+}));
+
 function makeUser(overrides: Partial<User> = {}): User {
   return {
     id: "test-user-123",

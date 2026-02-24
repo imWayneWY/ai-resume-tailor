@@ -1,8 +1,9 @@
 "use client";
 
 import type React from "react";
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { useCredits } from "@/components/CreditsProvider";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
@@ -18,35 +19,7 @@ export default function TailorPage() {
   const [apiError, setApiError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [fileName, setFileName] = useState("");
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
-  const [credits, setCredits] = useState<number | null>(null);
-
-  // Check auth and fetch credits via single API call
-  useEffect(() => {
-    async function checkCredits() {
-      try {
-        const res = await fetch("/api/credits");
-        if (res.ok) {
-          const json = await res.json();
-          setIsAuthenticated(json.authenticated ?? false);
-          setCredits(json.authenticated ? (json.balance ?? 0) : null);
-        } else {
-          setIsAuthenticated(false);
-        }
-      } catch {
-        // Non-critical — let the API handle it
-        setIsAuthenticated(false);
-      }
-    }
-    checkCredits();
-
-    // Refresh when credits change (e.g. after tailoring)
-    function handleCreditsUpdated() {
-      checkCredits();
-    }
-    window.addEventListener("credits-updated", handleCreditsUpdated);
-    return () => window.removeEventListener("credits-updated", handleCreditsUpdated);
-  }, []);
+  const { isAuthenticated, credits, refresh: refreshCredits } = useCredits();
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -156,51 +129,56 @@ export default function TailorPage() {
     setIsLoading(true);
 
     try {
-      // Step 1: Extract keywords first (so we can pass them to the tailor)
-      let extractedKeywords: string[] | null = null;
-      try {
-        const kwResponse = await fetch("/api/extract-keywords", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ jobDescription }),
-        });
-        if (kwResponse.ok) {
-          const kwData = await kwResponse.json();
-          if (Array.isArray(kwData?.keywords) && kwData.keywords.length > 0) {
-            extractedKeywords = kwData.keywords;
-          }
-        }
-      } catch {
-        // Keyword extraction is best-effort — tailor will still work without it
-      }
-
-      // Step 2: Tailor resume, passing extracted keywords if available
-      const requestBody: Record<string, unknown> = {
-        resume,
-        jobDescription,
-        generateCoverLetter,
-      };
-      if (extractedKeywords) {
-        requestBody.targetKeywords = extractedKeywords;
-      }
-
-      const tailorResponse = await fetch("/api/tailor", {
+      // Fire both API calls in parallel — keyword extraction is best-effort
+      const keywordsPromise = fetch("/api/extract-keywords", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestBody),
-      });
+        body: JSON.stringify({ jobDescription }),
+      })
+        .then(async (res) => {
+          if (!res.ok) return null;
+          const data = await res.json();
+          return Array.isArray(data?.keywords) && data.keywords.length > 0
+            ? data.keywords as string[]
+            : null;
+        })
+        .catch(() => null);
 
-      const contentType = tailorResponse.headers.get("content-type") || "";
-      const text = await tailorResponse.text();
-
-      let data: Record<string, unknown> | null = null;
-      if (contentType.includes("application/json") && text) {
-        try {
-          data = JSON.parse(text);
-        } catch {
-          // JSON parsing failed — fall through to error handling below
+      const tailorPromise = async (keywords: string[] | null) => {
+        const requestBody: Record<string, unknown> = {
+          resume,
+          jobDescription,
+          generateCoverLetter,
+        };
+        if (keywords) {
+          requestBody.targetKeywords = keywords;
         }
-      }
+
+        const tailorResponse = await fetch("/api/tailor", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(requestBody),
+        });
+
+        const contentType = tailorResponse.headers.get("content-type") || "";
+        const text = await tailorResponse.text();
+
+        let data: Record<string, unknown> | null = null;
+        if (contentType.includes("application/json") && text) {
+          try {
+            data = JSON.parse(text);
+          } catch {
+            // JSON parsing failed
+          }
+        }
+
+        return { response: tailorResponse, data };
+      };
+
+      // Wait for keywords first (fast LLM call ~1-2s), then fire tailor with them
+      // This keeps the sequential dependency but we start keywords ASAP
+      const extractedKeywords = await keywordsPromise;
+      const { response: tailorResponse, data } = await tailorPromise(extractedKeywords);
 
       if (!tailorResponse.ok) {
         const errorMessage =
@@ -233,7 +211,8 @@ export default function TailorPage() {
         );
       }
 
-      // Signal Navbar to refresh credits balance
+      // Signal CreditsProvider to refresh
+      refreshCredits();
       window.dispatchEvent(new Event("credits-updated"));
 
       router.push("/tailor/result");

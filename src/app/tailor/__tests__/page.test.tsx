@@ -1,6 +1,7 @@
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import TailorPage from "../page";
+import { CreditsProvider } from "@/components/CreditsProvider";
 
 // ---------- mocks ----------
 
@@ -67,6 +68,14 @@ afterEach(() => {
   global.fetch = originalFetch;
 });
 
+function renderTailorPage() {
+  return render(
+    <CreditsProvider>
+      <TailorPage />
+    </CreditsProvider>
+  );
+}
+
 // Helper: upload a valid PDF and populate resume textarea
 async function uploadResumePdf() {
   mockFetch.mockResolvedValueOnce(
@@ -92,40 +101,40 @@ async function uploadResumePdf() {
 
 describe("TailorPage", () => {
   it("renders the page heading", () => {
-    render(<TailorPage />);
+    renderTailorPage();
     expect(
       screen.getByRole("heading", { name: /tailor your resume/i })
     ).toBeInTheDocument();
   });
 
   it("renders PDF upload zone", () => {
-    render(<TailorPage />);
+    renderTailorPage();
     expect(screen.getByText(/drag & drop your resume pdf/i)).toBeInTheDocument();
   });
 
   it("renders job description textarea", () => {
-    render(<TailorPage />);
+    renderTailorPage();
     expect(
       screen.getByPlaceholderText(/paste the job description/i)
     ).toBeInTheDocument();
   });
 
   it("renders cover letter checkbox (unchecked by default)", () => {
-    render(<TailorPage />);
+    renderTailorPage();
     const checkbox = screen.getByRole("checkbox");
     expect(checkbox).toBeInTheDocument();
     expect(checkbox).not.toBeChecked();
   });
 
   it("renders submit button disabled by default", () => {
-    render(<TailorPage />);
+    renderTailorPage();
     const button = screen.getByRole("button", { name: /tailor resume/i });
     expect(button).toBeDisabled();
   });
 
   it("enables submit button when resume is uploaded and JD has content", async () => {
     const user = userEvent.setup();
-    render(<TailorPage />);
+    renderTailorPage();
 
     await uploadResumePdf();
     await user.type(
@@ -139,7 +148,7 @@ describe("TailorPage", () => {
 
   it("keeps submit button disabled when only JD is filled", async () => {
     const user = userEvent.setup();
-    render(<TailorPage />);
+    renderTailorPage();
 
     await user.type(
       screen.getByPlaceholderText(/paste the job description/i),
@@ -152,7 +161,7 @@ describe("TailorPage", () => {
 
   it("toggles cover letter checkbox", async () => {
     const user = userEvent.setup();
-    render(<TailorPage />);
+    renderTailorPage();
 
     const checkbox = screen.getByRole("checkbox");
     expect(checkbox).not.toBeChecked();
@@ -170,7 +179,7 @@ describe("TailorPage", () => {
       sections: [{ title: "Summary", content: "Test" }],
     };
 
-    render(<TailorPage />);
+    renderTailorPage();
 
     await uploadResumePdf();
     await user.type(
@@ -210,7 +219,7 @@ describe("TailorPage", () => {
   it("shows error on API failure", async () => {
     const user = userEvent.setup();
 
-    render(<TailorPage />);
+    renderTailorPage();
     await uploadResumePdf();
     await user.type(
       screen.getByPlaceholderText(/paste the job description/i),
@@ -247,7 +256,7 @@ describe("TailorPage", () => {
   it("shows network error when fetch throws", async () => {
     const user = userEvent.setup();
 
-    render(<TailorPage />);
+    renderTailorPage();
     await uploadResumePdf();
     await user.type(
       screen.getByPlaceholderText(/paste the job description/i),
@@ -267,7 +276,7 @@ describe("TailorPage", () => {
 
   // --- PDF upload tests ---
   it("shows error for non-PDF file", async () => {
-    render(<TailorPage />);
+    renderTailorPage();
 
     const fileInput = screen.getByLabelText(/upload pdf resume/i);
     const file = new File(["hello"], "test.txt", { type: "text/plain" });
@@ -278,7 +287,7 @@ describe("TailorPage", () => {
   });
 
   it("shows error for empty PDF file", async () => {
-    render(<TailorPage />);
+    renderTailorPage();
 
     const fileInput = screen.getByLabelText(/upload pdf resume/i);
     const file = new File([], "empty.pdf", { type: "application/pdf" });
@@ -289,7 +298,7 @@ describe("TailorPage", () => {
   });
 
   it("shows error for oversized file", async () => {
-    render(<TailorPage />);
+    renderTailorPage();
 
     const fileInput = screen.getByLabelText(/upload pdf resume/i);
     const bigContent = "a".repeat(10 * 1024 * 1024 + 1);
@@ -301,7 +310,7 @@ describe("TailorPage", () => {
   });
 
   it("shows success state after PDF upload", async () => {
-    render(<TailorPage />);
+    renderTailorPage();
     await uploadResumePdf();
 
     expect(screen.getByText("resume.pdf")).toBeInTheDocument();
@@ -316,7 +325,7 @@ describe("TailorPage", () => {
       )
     );
 
-    render(<TailorPage />);
+    renderTailorPage();
 
     const fileInput = screen.getByLabelText(/upload pdf resume/i);
     const file = new File(["bad pdf"], "bad.pdf", {
@@ -333,7 +342,7 @@ describe("TailorPage", () => {
   it("shows parsing state while extracting PDF text", async () => {
     mockFetch.mockReturnValueOnce(new Promise(() => {}));
 
-    render(<TailorPage />);
+    renderTailorPage();
 
     const fileInput = screen.getByLabelText(/upload pdf resume/i);
     const file = new File(["pdf content"], "resume.pdf", {
@@ -354,7 +363,7 @@ describe("TailorPage", () => {
       sections: [{ title: "Summary", content: "Test" }],
     };
 
-    render(<TailorPage />);
+    renderTailorPage();
     await uploadResumePdf();
     await user.type(
       screen.getByPlaceholderText(/paste the job description/i),
@@ -396,7 +405,7 @@ describe("TailorPage", () => {
       sections: [{ title: "Summary", content: "Test" }],
     };
 
-    render(<TailorPage />);
+    renderTailorPage();
     await uploadResumePdf();
     await user.type(
       screen.getByPlaceholderText(/paste the job description/i),
@@ -423,7 +432,7 @@ describe("TailorPage", () => {
   });
 
   it("renders browse label for file upload", () => {
-    render(<TailorPage />);
+    renderTailorPage();
     expect(screen.getByText("browse")).toBeInTheDocument();
   });
 });

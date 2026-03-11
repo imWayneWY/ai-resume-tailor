@@ -1,15 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cleanSections, cleanAiPhrases } from "@/lib/ai-phrase-cleaner";
-import { redactSections, redactPersonalInfo } from "@/lib/redact";
-import { createClient } from "@/lib/supabase/server";
 import { extractKeywords, calculateMatchScore } from "@/lib/keyword-matcher";
 import { curveScore } from "@/lib/score-curve";
 import { createRateLimiter, getClientIp } from "@/lib/rate-limit";
 
-// Rate limiters: stricter for unauthenticated users (5/min) vs authenticated (20/min)
-const unauthLimiter = createRateLimiter({ limit: 5, windowMs: 60_000 });
-const authLimiter = createRateLimiter({ limit: 20, windowMs: 60_000 });
-// Global rate limiter: cheap early check before JSON parsing and auth (50 req/min per IP)
+const rateLimiter = createRateLimiter({ limit: 20, windowMs: 60_000 });
 const globalLimiter = createRateLimiter({ limit: 50, windowMs: 60_000 });
 
 const API_VERSION = "2025-01-01-preview";
@@ -130,7 +125,6 @@ function validateRequest(
     typeof b.generateCoverLetter === "boolean";
   if (!baseValid) return false;
 
-  // targetKeywords is optional; if present, must be an array of strings
   if ("targetKeywords" in b && b.targetKeywords !== undefined) {
     if (!Array.isArray(b.targetKeywords)) return false;
     if (b.targetKeywords.some((k: unknown) => typeof k !== "string")) return false;
@@ -166,9 +160,21 @@ Respond with ONLY the JSON object, no markdown fences or extra text.`;
 }
 
 function buildAzureUrl(endpoint: string, deployment: string): string {
-  // Remove trailing slash from endpoint if present
   const base = endpoint.replace(/\/+$/, "");
   return `${base}/openai/deployments/${encodeURIComponent(deployment)}/chat/completions?api-version=${API_VERSION}`;
+}
+
+interface ParsedResult {
+  jobTitle?: string;
+  personalInfo?: {
+    fullName?: string;
+    email?: string;
+    phone?: string;
+    location?: string;
+    linkedin?: string;
+  };
+  sections: { title: string; content: string }[];
+  coverLetter?: string;
 }
 
 async function callAzureOpenAI(
@@ -224,19 +230,6 @@ async function callAzureOpenAI(
   return parseAndValidateResponse(text);
 }
 
-interface ParsedResult {
-  jobTitle?: string;
-  personalInfo?: {
-    fullName?: string;
-    email?: string;
-    phone?: string;
-    location?: string;
-    linkedin?: string;
-  };
-  sections: { title: string; content: string }[];
-  coverLetter?: string;
-}
-
 function parseAndValidateResponse(text: string): NextResponse | ParsedResult {
   let parsed: ParsedResult;
   try {
@@ -272,7 +265,6 @@ function parseAndValidateResponse(text: string): NextResponse | ParsedResult {
     parsed.jobTitle !== undefined &&
     typeof parsed.jobTitle !== "string";
 
-  // Validate personalInfo: if present, must be an object with optional string fields
   const hasInvalidPersonalInfo = (() => {
     if (!("personalInfo" in parsed) || parsed.personalInfo === undefined) return false;
     if (typeof parsed.personalInfo !== "object" || parsed.personalInfo === null) return true;
@@ -288,7 +280,6 @@ function parseAndValidateResponse(text: string): NextResponse | ParsedResult {
     );
   }
 
-  // Post-process: remove AI-generated buzzwords and filler phrases
   const cleanedResult = cleanSections(parsed.sections);
   parsed.sections = cleanedResult.sections;
 
@@ -301,7 +292,6 @@ function parseAndValidateResponse(text: string): NextResponse | ParsedResult {
 }
 
 export async function POST(request: NextRequest) {
-  // Early rate limit — cheap IP-only check before expensive JSON parsing and auth
   const clientIp = getClientIp(request);
   const globalCheck = globalLimiter.check(clientIp);
   if (!globalCheck.allowed) {
@@ -339,7 +329,6 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Input size validation — resume max 50k chars, JD max 20k chars
   const MAX_RESUME_LENGTH = 50_000;
   const MAX_JD_LENGTH = 20_000;
   if (body.resume.length > MAX_RESUME_LENGTH) {
@@ -358,22 +347,7 @@ export async function POST(request: NextRequest) {
   const { resume, jobDescription, generateCoverLetter, targetKeywords } = body;
   const userPrompt = buildUserPrompt(resume, jobDescription, generateCoverLetter, targetKeywords);
 
-  // Check auth status — unauthenticated users get redacted results
-  let isAuthenticated = false;
-  let userId: string | null = null;
-  let supabase;
-  try {
-    supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    isAuthenticated = !!user;
-    userId = user?.id ?? null;
-  } catch {
-    // Auth check failed — treat as unauthenticated
-  }
-
-  // Rate limiting — different limits for authenticated vs unauthenticated users
-  const limiter = isAuthenticated ? authLimiter : unauthLimiter;
-  const rateLimitResult = limiter.check(clientIp);
+  const rateLimitResult = rateLimiter.check(clientIp);
   if (!rateLimitResult.allowed) {
     return NextResponse.json(
       { error: "Too many requests. Please try again later." },
@@ -381,47 +355,14 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Authenticated users must have credits
-  if (isAuthenticated && supabase && userId) {
-    try {
-      const jdSnippet = jobDescription.slice(0, 100);
-      const { data, error } = await supabase.rpc("deduct_credit", {
-        p_jd_snippet: jdSnippet,
-      });
-
-      if (error) {
-        console.debug("Credit deduction error:", error.message);
-        return NextResponse.json(
-          { error: "Failed to process credits" },
-          { status: 500 }
-        );
-      }
-
-      if (data === false) {
-        return NextResponse.json(
-          { error: "No credits remaining", code: "NO_CREDITS" },
-          { status: 402 }
-        );
-      }
-    } catch (err) {
-      console.debug("Credit check error:", err);
-      return NextResponse.json(
-        { error: "Failed to process credits" },
-        { status: 500 }
-      );
-    }
-  }
-
   try {
     const result = await callAzureOpenAI(endpoint, apiKey, deployment, userPrompt);
 
-    // If callAzureOpenAI returned an error response, pass it through
     if (result instanceof NextResponse) {
       return result;
     }
 
-    // Compute match scores server-side from the REAL tailored text.
-    // This is critical for redacted results — client can't score gibberish.
+    // Compute match scores
     const jdKeywords = targetKeywords && targetKeywords.length > 0
       ? (() => {
           const cleanedKeywords = targetKeywords
@@ -439,43 +380,10 @@ export async function POST(request: NextRequest) {
     const beforeScore = totalKw > 0 ? Math.round((beforeResult.matchCount / totalKw) * 100) : 0;
     const afterScore = totalKw > 0 ? Math.round((afterResult.matchCount / totalKw) * 100) : 0;
 
-    // Curve scores for user-facing display (raw stored in DB, curved returned to client)
     const beforeScoreDisplay = curveScore(beforeScore);
     const afterScoreDisplay = curveScore(afterScore);
 
-    // Authenticated users get full results
-    if (isAuthenticated) {
-      // Update usage history with scores via RPC (fire-and-forget).
-      // Uses SECURITY DEFINER function so no UPDATE RLS policy needed.
-      if (supabase && userId) {
-        supabase
-          .rpc("update_latest_usage_scores", {
-            p_before_score: beforeScore,
-            p_after_score: afterScore,
-          })
-          .then(({ error }: { error: { message: string } | null }) => {
-            if (error) console.debug("Failed to update usage scores:", error.message);
-          });
-      }
-      return NextResponse.json({ ...result, beforeScore: beforeScoreDisplay, afterScore: afterScoreDisplay });
-    }
-
-    // Unauthenticated users get redacted results with curved display scores
-    // (raw scores are only persisted to usage_history above)
-    const redacted = {
-      ...result,
-      sections: redactSections(result.sections),
-      personalInfo: result.personalInfo
-        ? redactPersonalInfo(result.personalInfo)
-        : result.personalInfo,
-      // jobTitle intentionally NOT redacted — it comes from the JD (which the user provided), not the resume
-      coverLetter: undefined, // Don't show cover letter at all
-      redacted: true,
-      beforeScore: beforeScoreDisplay,
-      afterScore: afterScoreDisplay,
-    };
-
-    return NextResponse.json(redacted);
+    return NextResponse.json({ ...result, beforeScore: beforeScoreDisplay, afterScore: afterScoreDisplay });
   } catch {
     return NextResponse.json(
       { error: "Internal server error" },

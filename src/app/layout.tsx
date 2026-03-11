@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import "./globals.css";
 import { Navbar } from "@/components/Navbar";
-import { CreditsProvider } from "@/components/CreditsProvider";
 import { BASE_URL } from "@/lib/config";
 
 export const metadata: Metadata = {
@@ -67,11 +66,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="flex min-h-screen flex-col antialiased">
-        <CreditsProvider>
-          <Navbar />
-          <div className="flex-1">{children}</div>
-          <Footer />
-        </CreditsProvider>
+        <Navbar />
+        <div className="flex-1">{children}</div>
+        <Footer />
       </body>
     </html>
   );

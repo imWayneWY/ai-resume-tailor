@@ -27,10 +27,6 @@ jest.mock("@/components/Navbar", () => ({
   Navbar: () => <nav data-testid="navbar">Navbar</nav>,
 }));
 
-// Mock the CreditsProvider
-jest.mock("@/components/CreditsProvider", () => ({
-  CreditsProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-}));
 
 describe("Layout", () => {
   it("exports metadata with correct title and description", async () => {

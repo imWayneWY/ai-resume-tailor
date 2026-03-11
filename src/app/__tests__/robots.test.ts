@@ -15,12 +15,11 @@ describe("robots", () => {
     expect(mainRule!.allow).toBe("/");
   });
 
-  it("disallows /api/ and /auth/callback", () => {
+  it("disallows /api/", () => {
     const config = robots();
     const rules = Array.isArray(config.rules) ? config.rules : [config.rules];
     const mainRule = rules.find((r) => r.userAgent === "*");
     expect(mainRule!.disallow).toContain("/api/");
-    expect(mainRule!.disallow).toContain("/auth/callback");
   });
 
   it("includes a sitemap URL", () => {

@@ -1,7 +1,6 @@
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import TailorPage from "../page";
-import { CreditsProvider } from "@/components/CreditsProvider";
 
 // ---------- mocks ----------
 
@@ -55,13 +54,7 @@ beforeEach(() => {
   sessionStorageMock.getItem.mockClear();
   sessionStorageMock.setItem.mockClear();
 
-  // Default: unauthenticated user (credits check on mount)
-  mockFetch.mockResolvedValueOnce(
-    createMockResponse(
-      JSON.stringify({ balance: null, authenticated: false }),
-      { status: 200, headers: { "content-type": "application/json" } }
-    )
-  );
+  // No credits fetch needed
 });
 
 afterEach(() => {
@@ -69,11 +62,7 @@ afterEach(() => {
 });
 
 function renderTailorPage() {
-  return render(
-    <CreditsProvider>
-      <TailorPage />
-    </CreditsProvider>
-  );
+  return render(<TailorPage />);
 }
 
 // Helper: upload a valid PDF and populate resume textarea

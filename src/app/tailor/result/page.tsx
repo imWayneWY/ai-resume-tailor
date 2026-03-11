@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import MatchScore from "@/components/MatchScore";
 
 interface Section {
@@ -29,7 +28,6 @@ interface TailorResult {
     location?: string;
     linkedin?: string;
   };
-  redacted?: boolean;
   beforeScore?: number;
   afterScore?: number;
 }
@@ -83,12 +81,10 @@ export default function ResultPage() {
       setOriginalResume(sessionStorage.getItem("tailorOriginalResume") || "");
       setJobDescription(sessionStorage.getItem("tailorJobDescription") || "");
 
-      // Load job title from API response
       if (typeof parsed.jobTitle === "string" && parsed.jobTitle.trim()) {
         setJobTitle(parsed.jobTitle.trim());
       }
 
-      // Load personal info from LLM extraction (API response)
       const llmInfo = parsed.personalInfo || {};
       setPersonalInfo({
         fullName: llmInfo.fullName || "",
@@ -98,13 +94,6 @@ export default function ResultPage() {
         linkedin: llmInfo.linkedin || "",
       });
 
-      // Note: we intentionally do NOT remove sessionStorage items here.
-      // React Strict Mode calls useEffect twice in development, and removing
-      // items on first call makes them unavailable on the second call,
-      // causing scores to show 0. sessionStorage is tab-scoped and clears
-      // automatically when the tab closes — no manual cleanup needed.
-
-      // Read LLM-extracted keywords if available
       const storedKeywords = sessionStorage.getItem("tailorLlmKeywords");
       if (storedKeywords) {
         try {
@@ -129,11 +118,8 @@ export default function ResultPage() {
     });
   }, []);
 
-  // Persist edits to sessionStorage so changes survive navigation
-  // Skip for redacted results — no point persisting gibberish
   useEffect(() => {
     if (editableSections.length === 0) return;
-    if (result?.redacted) return;
     const stored = sessionStorage.getItem("tailorResult");
     if (!stored) return;
     try {
@@ -145,7 +131,7 @@ export default function ResultPage() {
     } catch {
       // ignore
     }
-  }, [editableSections, jobTitle, personalInfo, result]);
+  }, [editableSections, jobTitle, personalInfo]);
 
   const handleDownloadPdf = async () => {
     if (pdfGeneratingRef.current) return;
@@ -153,7 +139,6 @@ export default function ResultPage() {
     setPdfGenerating(true);
     setPdfError("");
     try {
-      // Dynamic imports to avoid SSR issues with @react-pdf/renderer
       const { pdf } = await import("@react-pdf/renderer");
       const { default: ResumePdf } = await import(
         "@/components/ResumePdf"
@@ -186,7 +171,6 @@ export default function ResultPage() {
     }
   };
 
-  // Combine editable sections into a single text for match scoring
   const tailoredText = useMemo(
     () => editableSections.map((s) => s.content).join("\n"),
     [editableSections]
@@ -219,22 +203,13 @@ export default function ResultPage() {
           >
             ← Back
           </button>
-          {result.redacted ? (
-            <Link
-              href="/auth/signup"
-              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
-            >
-              Sign up to unlock
-            </Link>
-          ) : (
-            <button
-              onClick={handleDownloadPdf}
-              disabled={pdfGenerating}
-              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {pdfGenerating ? "Generating…" : "Download PDF"}
-            </button>
-          )}
+          <button
+            onClick={handleDownloadPdf}
+            disabled={pdfGenerating}
+            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {pdfGenerating ? "Generating…" : "Download PDF"}
+          </button>
         </div>
       </div>
 
@@ -250,12 +225,8 @@ export default function ResultPage() {
         )}
       </div>
 
-      {/* Match Score — for redacted results, only show when server scores are available
-          (client can't score gibberish text; old cached results may lack server scores) */}
-      {originalResume &&
-        jobDescription &&
-        (!result?.redacted ||
-          (result?.beforeScore != null && result?.afterScore != null)) && (
+      {/* Match Score */}
+      {originalResume && jobDescription && (
         <div className="mb-6 sm:mb-8">
           <MatchScore
             originalResume={originalResume}
@@ -268,50 +239,14 @@ export default function ResultPage() {
         </div>
       )}
 
-      {/* Two-column layout: edit first on mobile, preview first on desktop */}
-      <div className={`grid grid-cols-1 gap-6 sm:gap-8 ${result.redacted ? "" : "lg:grid-cols-2"}`}>
+      {/* Two-column layout */}
+      <div className="grid grid-cols-1 gap-6 sm:gap-8 lg:grid-cols-2">
         {/* Preview */}
-        <div className={result.redacted ? "" : "order-2 lg:order-1"}>
+        <div className="order-2 lg:order-1">
           <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-muted">
             Preview
           </h2>
-          <div className="relative rounded-lg border border-border bg-card p-6 shadow-sm sm:p-8">
-            {/* Blur overlay for redacted content */}
-            {result.redacted && (
-              <div className="pointer-events-none absolute inset-0 z-10 rounded-lg backdrop-blur-sm" aria-hidden="true" />
-            )}
-            {result.redacted && (
-              <div className="absolute inset-0 z-20 flex items-center justify-center rounded-lg" role="dialog" aria-label="Sign up to unlock resume">
-                <div className="pointer-events-auto rounded-xl bg-overlay-bg px-8 py-6 text-center shadow-lg">
-                  <div className="mb-3 text-3xl">🔒</div>
-                  <h3 className="text-lg font-semibold">
-                    Your tailored resume is ready!
-                  </h3>
-                  <p className="mt-2 max-w-sm text-sm text-muted">
-                    Sign up for free to view and download your optimized resume.
-                    You&apos;ll get 1 free credit to start.
-                  </p>
-                  <Link
-                    href="/auth/signup"
-                    className="mt-4 inline-block rounded-lg bg-accent px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
-                  >
-                    Sign up free →
-                  </Link>
-                  <p className="mt-2 text-xs text-muted">
-                    Already have an account?{" "}
-                    <Link
-                      href="/auth/login"
-                      className="font-medium text-accent hover:text-accent-hover"
-                    >
-                      Sign in
-                    </Link>
-                  </p>
-                </div>
-              </div>
-            )}
-            {/* Personal info header */}
-            {/* Resume content — hidden from screen readers when redacted (gibberish text) */}
-            <div aria-hidden={result.redacted || undefined}>
+          <div className="rounded-lg border border-border bg-card p-6 shadow-sm sm:p-8">
             {(() => {
               const contactParts = [personalInfo.email, personalInfo.phone, personalInfo.location, personalInfo.linkedin].filter(Boolean);
               const hasAnyHeader = personalInfo.fullName || jobTitle || contactParts.length > 0;
@@ -346,12 +281,10 @@ export default function ResultPage() {
                 </div>
               </div>
             ))}
-            </div>
           </div>
         </div>
 
-        {/* Edit — hidden for redacted/unauthenticated users */}
-        {!result.redacted && (
+        {/* Edit */}
         <div className="order-1 lg:order-2">
           <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-muted">
             Edit Sections
@@ -472,7 +405,6 @@ export default function ResultPage() {
             })}
           </div>
         </div>
-        )}
       </div>
 
       {/* Cover Letter */}

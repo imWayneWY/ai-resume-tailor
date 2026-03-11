@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
 import { BASE_URL } from "@/lib/config";
 
-const BUILD_DATE = new Date("2026-03-11");
+const BUILD_DATE = new Date("2026-03-11T00:00:00.000Z");
 
 export default function sitemap(): MetadataRoute.Sitemap {
   return [

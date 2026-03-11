@@ -10,9 +10,9 @@ interface MatchScoreProps {
   jobDescription: string;
   /** LLM-extracted keywords from /api/extract-keywords. Falls back to regex extraction if not provided. */
   llmKeywords?: string[];
-  /** Server-computed before score (0-100). Server-computed score. */
+  /** Server-computed before score (0-100), used when available. */
   serverBeforeScore?: number;
-  /** Server-computed after score (0-100). Server-computed score. */
+  /** Server-computed after score (0-100), used when available. */
   serverAfterScore?: number;
 }
 

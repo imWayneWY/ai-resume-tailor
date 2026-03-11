@@ -3,7 +3,6 @@
 import type React from "react";
 import { useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { useCredits } from "@/components/CreditsProvider";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
@@ -19,7 +18,6 @@ export default function TailorPage() {
   const [apiError, setApiError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [fileName, setFileName] = useState("");
-  const { isAuthenticated, credits, refresh: refreshCredits } = useCredits();
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -129,7 +127,6 @@ export default function TailorPage() {
     setIsLoading(true);
 
     try {
-      // Fire both API calls in parallel — keyword extraction is best-effort
       const keywordsPromise = fetch("/api/extract-keywords", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -175,8 +172,6 @@ export default function TailorPage() {
         return { response: tailorResponse, data };
       };
 
-      // Wait for keywords first (fast LLM call ~1-2s), then fire tailor with them
-      // This keeps the sequential dependency but we start keywords ASAP
       const extractedKeywords = await keywordsPromise;
       const { response: tailorResponse, data } = await tailorPromise(extractedKeywords);
 
@@ -184,13 +179,7 @@ export default function TailorPage() {
         const errorMessage =
           (data && typeof data.error === "string" && data.error) ||
           "Something went wrong. Please try again.";
-        const errorCode = data && typeof data.code === "string" ? data.code : null;
-
-        if (errorCode === "NO_CREDITS") {
-          setApiError("You're out of credits! More credits coming soon — stay tuned.");
-        } else {
-          setApiError(errorMessage);
-        }
+        setApiError(errorMessage);
         return;
       }
 
@@ -203,16 +192,12 @@ export default function TailorPage() {
       sessionStorage.setItem("tailorOriginalResume", resume);
       sessionStorage.setItem("tailorJobDescription", jobDescription);
 
-      // Store LLM keywords for match score display
       if (extractedKeywords) {
         sessionStorage.setItem(
           "tailorLlmKeywords",
           JSON.stringify(extractedKeywords)
         );
       }
-
-      // Signal CreditsProvider to refresh (direct call — no event dispatch needed)
-      refreshCredits();
 
       router.push("/tailor/result");
     } catch {
@@ -224,9 +209,8 @@ export default function TailorPage() {
     }
   };
 
-  const creditsOk = isAuthenticated === false || (credits !== null && credits > 0);
   const isReady =
-    resume.trim().length > 0 && jobDescription.trim().length > 0 && !isLoading && !isParsing && creditsOk;
+    resume.trim().length > 0 && jobDescription.trim().length > 0 && !isLoading && !isParsing;
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-12">
@@ -391,13 +375,6 @@ export default function TailorPage() {
             />
             <span className="text-muted">Generate cover letter too</span>
           </label>
-
-          {/* Credits warning */}
-          {isAuthenticated && credits === 0 && (
-            <div className="rounded-lg border border-warning-border bg-warning-bg px-4 py-3 text-sm text-warning-text">
-              You&apos;re out of credits. Purchase more to continue tailoring resumes.
-            </div>
-          )}
 
           {/* Error message */}
           <div aria-live="polite">

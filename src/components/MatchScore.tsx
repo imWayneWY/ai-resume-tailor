@@ -10,9 +10,9 @@ interface MatchScoreProps {
   jobDescription: string;
   /** LLM-extracted keywords from /api/extract-keywords. Falls back to regex extraction if not provided. */
   llmKeywords?: string[];
-  /** Server-computed before score (0-100). Used for redacted results where client can't compute. */
+  /** Server-computed before score (0-100). Server-computed score. */
   serverBeforeScore?: number;
-  /** Server-computed after score (0-100). Used for redacted results where client can't compute. */
+  /** Server-computed after score (0-100). Server-computed score. */
   serverAfterScore?: number;
 }
 
@@ -96,7 +96,7 @@ export default function MatchScore({
     return extractKeywords(jobDescription);
   }, [jobDescription, llmKeywords]);
 
-  // Prefer server-computed scores (needed for redacted results where client text is gibberish)
+  // Prefer server-computed scores when available
   const hasServerScores = typeof serverBeforeScore === "number" && typeof serverAfterScore === "number";
 
   // Only compute client-side scores when server scores aren't available

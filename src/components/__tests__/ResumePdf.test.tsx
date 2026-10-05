@@ -185,3 +185,51 @@ describe("ResumePdf", () => {
     expect(html).toContain("TypeScript");
   });
 });
+
+describe("single-page fitting", () => {
+  const { estimateLineCount, pickDensity, isEntryHeader, stripBoldMarkers } =
+    jest.requireActual("../ResumePdf");
+
+  it("keeps full-size typography for short resumes", () => {
+    const sections = [{ title: "Summary", content: "Short summary line." }];
+    const d = pickDensity(estimateLineCount(sections, true));
+    expect(d).not.toBeNull();
+    expect(d.fontSize).toBe(10);
+  });
+
+  it("shrinks typography as content grows", () => {
+    const small = pickDensity(40);
+    const mid = pickDensity(60);
+    expect(small.fontSize).toBeGreaterThan(mid.fontSize);
+  });
+
+  it("returns null rather than shrinking into unreadability", () => {
+    expect(pickDensity(500)).toBeNull();
+  });
+
+  it("never picks a preset below 8pt", () => {
+    for (const n of [10, 46, 55, 63, 71, 79]) {
+      const d = pickDensity(n);
+      expect(d.fontSize).toBeGreaterThanOrEqual(8);
+    }
+  });
+
+  it("estimate grows with longer content", () => {
+    const a = estimateLineCount([{ title: "E", content: "one line" }], false);
+    const b = estimateLineCount(
+      [{ title: "E", content: Array(20).fill("a bullet line here").join("\n") }],
+      false
+    );
+    expect(b).toBeGreaterThan(a);
+  });
+
+  it("detects entry headers but not bullets or plain text", () => {
+    expect(isEntryHeader("**Microsoft**, Vancouver — Engineer (2020)")).toBe(true);
+    expect(isEntryHeader("• Did **bold** work")).toBe(false);
+    expect(isEntryHeader("Plain summary text")).toBe(false);
+  });
+
+  it("strips bold markers from header lines", () => {
+    expect(stripBoldMarkers("**Microsoft**, Vancouver")).toBe("Microsoft, Vancouver");
+  });
+});

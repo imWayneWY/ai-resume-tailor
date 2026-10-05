@@ -4,6 +4,30 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import MatchScore from "@/components/MatchScore";
 
+/**
+ * Render **bold** markers in the preview pane so it matches the PDF instead
+ * of showing raw asterisks (e.g. "**Microsoft**, Vancouver").
+ */
+function renderPreviewContent(content: string) {
+  return content.split("\n").map((line, i) => {
+    const parts = line.split(/(\*\*.*?\*\*)/g);
+    return (
+      <div key={i}>
+        {parts.map((part, j) =>
+          part.startsWith("**") && part.endsWith("**") && part.length > 4 ? (
+            <strong key={j} className="font-semibold text-fg">
+              {part.slice(2, -2)}
+            </strong>
+          ) : (
+            <span key={j}>{part}</span>
+          )
+        )}
+        {line.length === 0 ? "\u00A0" : ""}
+      </div>
+    );
+  });
+}
+
 interface Section {
   title: string;
   content: string;
@@ -277,7 +301,7 @@ export default function ResultPage() {
                   {section.title}
                 </h3>
                 <div className="whitespace-pre-wrap text-sm leading-relaxed">
-                  {section.content}
+                  {renderPreviewContent(section.content)}
                 </div>
               </div>
             ))}

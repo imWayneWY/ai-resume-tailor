@@ -190,6 +190,21 @@ describe("single-page fitting", () => {
   const { estimateLineCount, pickDensity, isEntryHeader, stripBoldMarkers } =
     jest.requireActual("../ResumePdf");
 
+  it("is opt-in: no density scaling unless singlePage is set", () => {
+    // Default must leave natural multi-page flow untouched.
+    const long = Array(40).fill("a reasonably long bullet line of text").join("\n");
+    const html = ReactDOMServer.renderToStaticMarkup(
+      React.createElement(ResumePdf, { sections: [{ title: "Experience", content: long }] })
+    );
+    const htmlSingle = ReactDOMServer.renderToStaticMarkup(
+      React.createElement(ResumePdf, {
+        sections: [{ title: "Experience", content: long }],
+        singlePage: true,
+      })
+    );
+    expect(html).not.toEqual(htmlSingle);
+  });
+
   it("keeps full-size typography for short resumes", () => {
     const sections = [{ title: "Summary", content: "Short summary line." }];
     const d = pickDensity(estimateLineCount(sections, true));

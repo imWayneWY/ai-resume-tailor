@@ -24,7 +24,7 @@ interface ResumePdfProps {
   coverLetter?: string;
   personalInfo?: PdfPersonalInfo;
   jobTitle?: string;
-  /** Fit the resume onto a single page by scaling typography/spacing. */
+  /** Opt-in: fit the resume onto a single page by scaling typography/spacing. */
   singlePage?: boolean;
 }
 
@@ -246,7 +246,7 @@ export default function ResumePdf({
   coverLetter,
   personalInfo,
   jobTitle,
-  singlePage = true,
+  singlePage = false,
 }: ResumePdfProps) {
   const contactParts = personalInfo
     ? [personalInfo.email, personalInfo.phone, personalInfo.location, personalInfo.linkedin].filter(

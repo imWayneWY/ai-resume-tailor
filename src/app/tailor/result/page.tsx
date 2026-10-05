@@ -74,6 +74,7 @@ export default function ResultPage() {
     linkedin: "",
   });
   const [jobTitle, setJobTitle] = useState("");
+  const [singlePage, setSinglePage] = useState(false);
   const [pdfGenerating, setPdfGenerating] = useState(false);
   const [pdfError, setPdfError] = useState("");
   const pdfGeneratingRef = useRef(false);
@@ -174,6 +175,7 @@ export default function ResultPage() {
           coverLetter={result?.coverLetter}
           personalInfo={personalInfo}
           jobTitle={jobTitle}
+          singlePage={singlePage}
         />
       ).toBlob();
 
@@ -220,7 +222,20 @@ export default function ResultPage() {
             Review and edit your tailored resume below.
           </p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <label
+            htmlFor="single-page-toggle"
+            className="flex cursor-pointer items-center gap-2 text-sm text-muted"
+          >
+            <input
+              id="single-page-toggle"
+              type="checkbox"
+              checked={singlePage}
+              onChange={(e) => setSinglePage(e.target.checked)}
+              className="h-4 w-4 cursor-pointer rounded border-border accent-accent"
+            />
+            Fit to one page
+          </label>
           <button
             onClick={() => router.push("/tailor")}
             className="rounded-lg border border-border px-4 py-2 text-sm font-medium transition-colors hover:bg-surface"

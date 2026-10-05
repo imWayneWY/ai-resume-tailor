@@ -407,3 +407,49 @@ describe("extractKeywords — compound word filtering", () => {
     expect(keywords.has("end-to-end")).toBe(true);
   });
 });
+
+describe("calculateMatchScore — regex-unsafe keywords", () => {
+  // Regression: escaping before separator-normalization produced invalid
+  // patterns like "5[\s/\-]++[\s/\-]+years" -> SyntaxError: Nothing to repeat.
+  // This crashed the result page client-side even when /api/tailor returned 200.
+  const unsafe = [
+    "5+ years software engineering",
+    "c++ development",
+    "node.js / react",
+    "real-time",
+    "ci/cd",
+    "a++",
+    "(remote)",
+    "$100k budget",
+    "data[science]",
+  ];
+
+  it.each(unsafe)("does not throw on keyword %p", (keyword) => {
+    expect(() =>
+      calculateMatchScore("resume text", new Set([keyword]))
+    ).not.toThrow();
+  });
+
+  it("still matches across flexible separators after escaping", () => {
+    const result = calculateMatchScore(
+      "Bringing 5+ years software engineering and c++ development with ci cd",
+      new Set(["5+ years software engineering", "c++ development", "ci/cd"])
+    );
+    expect(result.matchedKeywords).toContain("5+ years software engineering");
+    expect(result.matchedKeywords).toContain("c++ development");
+    expect(result.matchedKeywords).toContain("ci/cd");
+  });
+
+  it("does not false-positive on metacharacters treated literally", () => {
+    const result = calculateMatchScore(
+      "Managed a 5 year plan with cxx work",
+      new Set(["5+ years software engineering", "c++ development"])
+    );
+    expect(result.matchedKeywords).toHaveLength(0);
+  });
+
+  it("counts a separator-only keyword as missed", () => {
+    const result = calculateMatchScore("anything", new Set(["---"]));
+    expect(result.missedKeywords).toContain("---");
+  });
+});

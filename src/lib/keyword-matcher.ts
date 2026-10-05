@@ -346,9 +346,19 @@ export function calculateMatchScore(
     // For multi-word phrases or compound terms, check with flexible separator matching
     if (keyword.includes(" ") || keyword.includes("/") || keyword.includes("-")) {
       // Normalize separators for flexible matching (ci/cd ↔ ci cd, real-time ↔ real time)
+      // Split on separators FIRST, then escape each literal segment.
+      // Escaping first is unsafe: the separator class contains "\\", so it would
+      // consume backslashes introduced by escaping and emit invalid patterns
+      // (e.g. "5+ years" -> "5[\\s/\\-]++[\\s/\\-]+years" -> "Nothing to repeat").
       const flexPattern = keyword
-        .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-        .replace(/[\s/\\-]+/g, "[\\s/\\-]+");
+        .split(/[\s/\-]+/)
+        .filter((part) => part.length > 0)
+        .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+        .join("[\\s/\\-]+");
+      if (flexPattern.length === 0) {
+        missedKeywords.push(keyword);
+        continue;
+      }
       const pattern = new RegExp(flexPattern, "i");
       if (pattern.test(resumeLower)) {
         matchedKeywords.push(keyword);

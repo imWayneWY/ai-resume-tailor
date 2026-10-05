@@ -13,6 +13,19 @@ jest.mock("@/lib/rate-limit", () => ({
   getClientIp: () => "127.0.0.1",
 }));
 
+// Mock keyword-matcher so scoring can be forced to throw on demand.
+const scoreShouldThrow = { value: false };
+jest.mock("@/lib/keyword-matcher", () => {
+  const actual = jest.requireActual("@/lib/keyword-matcher");
+  return {
+    ...actual,
+    calculateMatchScore: (...args: unknown[]) => {
+      if (scoreShouldThrow.value) throw new Error("boom");
+      return (actual.calculateMatchScore as (...a: unknown[]) => unknown)(...args);
+    },
+  };
+});
+
 // ---------- helpers ----------
 
 function makeRequest(body: unknown) {
@@ -522,6 +535,34 @@ describe("POST /api/tailor", () => {
     expect(json.coverLetter).not.toMatch(/paradigm shift/i);
     expect(json.coverLetter).toContain("help");
     expect(json.coverLetter).toContain("change");
+  });
+
+  // --- scoring resilience ---
+  it("still returns the tailored resume when score computation throws", async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify(validAzureResponse), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    // Force the scoring path to blow up.
+    scoreShouldThrow.value = true;
+
+    let res: Response;
+    try {
+      res = await POST(makeRequest(validBody));
+    } finally {
+      scoreShouldThrow.value = false;
+    }
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(Array.isArray(json.sections)).toBe(true);
+    expect(json.sections.length).toBeGreaterThan(0);
+    expect(json.error).toBeUndefined();
+    expect(json.beforeScore).toBeUndefined();
+    expect(json.afterScore).toBeUndefined();
   });
 
   // --- targetKeywords support ---

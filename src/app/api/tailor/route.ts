@@ -9,6 +9,9 @@ const globalLimiter = createRateLimiter({ limit: 50, windowMs: 60_000 });
 
 const API_VERSION = "2025-01-01-preview";
 
+export const runtime = "nodejs";
+export const maxDuration = 60;
+
 const SYSTEM_PROMPT = `You are an expert resume writer and ATS (Applicant Tracking System) optimizer. Your job is to deeply tailor a candidate's master resume to a specific job description.
 
 ## Core Principle
@@ -291,6 +294,58 @@ function parseAndValidateResponse(text: string): NextResponse | ParsedResult {
   return parsed;
 }
 
+interface MatchScores {
+  beforeScore?: number;
+  afterScore?: number;
+}
+
+/**
+ * Compute before/after ATS match scores. Returns an empty object if scoring
+ * fails — a successful tailoring must never be turned into a 500 by the
+ * optional score calculation.
+ */
+function computeScores(
+  result: ParsedResult,
+  resume: string,
+  jobDescription: string,
+  targetKeywords?: string[]
+): MatchScores {
+  try {
+    const cleanedKeywords = Array.isArray(targetKeywords)
+      ? targetKeywords
+          .filter((k): k is string => typeof k === "string")
+          .map((k) => k.toLowerCase().trim())
+          .filter((k) => k.length > 0)
+      : [];
+
+    const jdKeywords =
+      cleanedKeywords.length > 0
+        ? new Set(cleanedKeywords)
+        : extractKeywords(jobDescription);
+
+    const realTailoredText = result.sections
+      .map((s) => s?.content ?? "")
+      .join("\n");
+
+    const totalKw = jdKeywords.size;
+    if (totalKw === 0) return { beforeScore: 0, afterScore: 0 };
+
+    const beforeResult = calculateMatchScore(resume, jdKeywords);
+    const afterResult = calculateMatchScore(realTailoredText, jdKeywords);
+
+    return {
+      beforeScore: curveScore(Math.round((beforeResult.matchCount / totalKw) * 100)),
+      afterScore: curveScore(Math.round((afterResult.matchCount / totalKw) * 100)),
+    };
+  } catch (err) {
+    console.debug(
+      "[api/tailor] score computation failed, returning result without scores",
+      err instanceof Error ? `${err.name}: ${err.message}` : String(err)
+    );
+    return {};
+  }
+}
+
 export async function POST(request: NextRequest) {
   const clientIp = getClientIp(request);
   const globalCheck = globalLimiter.check(clientIp);
@@ -362,29 +417,15 @@ export async function POST(request: NextRequest) {
       return result;
     }
 
-    // Compute match scores
-    const jdKeywords = targetKeywords && targetKeywords.length > 0
-      ? (() => {
-          const cleanedKeywords = targetKeywords
-            .map((k: string) => k.toLowerCase().trim())
-            .filter((k: string) => k.length > 0);
-          return cleanedKeywords.length > 0
-            ? new Set(cleanedKeywords)
-            : extractKeywords(jobDescription);
-        })()
-      : extractKeywords(jobDescription);
-    const realTailoredText = result.sections.map((s) => s.content).join("\n");
-    const totalKw = jdKeywords.size;
-    const beforeResult = calculateMatchScore(resume, jdKeywords);
-    const afterResult = calculateMatchScore(realTailoredText, jdKeywords);
-    const beforeScore = totalKw > 0 ? Math.round((beforeResult.matchCount / totalKw) * 100) : 0;
-    const afterScore = totalKw > 0 ? Math.round((afterResult.matchCount / totalKw) * 100) : 0;
+    // Scoring is a nice-to-have: never fail a successful tailoring because of it.
+    const scores = computeScores(result, resume, jobDescription, targetKeywords);
 
-    const beforeScoreDisplay = curveScore(beforeScore);
-    const afterScoreDisplay = curveScore(afterScore);
-
-    return NextResponse.json({ ...result, beforeScore: beforeScoreDisplay, afterScore: afterScoreDisplay });
-  } catch {
+    return NextResponse.json({ ...result, ...scores });
+  } catch (err) {
+    console.debug(
+      "[api/tailor] unhandled failure",
+      err instanceof Error ? `${err.name}: ${err.message}\n${err.stack}` : String(err)
+    );
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

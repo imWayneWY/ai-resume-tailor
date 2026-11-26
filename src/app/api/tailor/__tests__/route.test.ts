@@ -975,6 +975,41 @@ Experience
       expect(json.supportedKeywords).toHaveLength(1);
       expect(json.supportedKeywords[0].term).toBe("GraphQL");
     });
+
+    it("verifies evidence sourced from a Certifications section, not only Skills", async () => {
+      const resumeWithCertifications =
+        "Summary\nEngineer.\n\nCertifications\nGitHub Copilot Certification\nAWS Certified Developer\n\nSkills\nJavaScript, TypeScript";
+      const response = {
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                sections: [{ title: "Summary", content: "Engineer." }],
+                supportedKeywords: [
+                  { term: "AI-assisted development", evidence: "GitHub Copilot Certification" },
+                ],
+              }),
+            },
+          },
+        ],
+      };
+
+      mockFetch.mockResolvedValueOnce(
+        new Response(JSON.stringify(response), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      );
+
+      const res = await POST(
+        makeRequest({ ...validBody, resume: resumeWithCertifications })
+      );
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.verifiedSupportedKeywords).toEqual([
+        { term: "AI-assisted development", evidence: "GitHub Copilot Certification" },
+      ]);
+    });
   });
 
   // --- missingKeywords cap ---

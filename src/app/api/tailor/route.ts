@@ -46,6 +46,8 @@ Write like a senior engineer describing their own work: plain, specific, verifia
 - Do not end bullets with a tacked-on participle clause ("..., enhancing X", "..., ensuring Y", "..., driving Z").
 - Do not repeat the same noun phrase across bullets.
 - Banned words and phrases: passionate, accomplished, results-driven, self-directed, self-starter, dynamic, seasoned, spearheaded, leveraged, utilized, cutting-edge, robust, seamless, synergy, best practices, ensuring compliance, team player, strong communication skills, fast-paced environment.
+- You may delete only: subjective adjectives/adverbs (e.g. high-impact, seamless, premium, significantly, complex), and clauses that state intent or values rather than facts (e.g. "supporting X's commitment to…", "in a fast-paced environment").
+- Never delete: a stated result or outcome (e.g. "Improved conversion for…"), an audience or user group (e.g. "serving the Chinese-Canadian community"), or a whole sentence of factual content.
 
 ## 5. Summary
 2–3 sentences, max 60 words.
@@ -91,7 +93,7 @@ Return only JSON matching this shape:
 - Each section's "content" is plain text with newlines (no markdown lists). Experience entries use this exact format: "**Company Name** — Role Title (Date Range)" on its own line, followed by bullets that each start with "• ".
 - Omit the "coverLetter" field entirely unless a cover letter was requested. Never return it as null.
 - "changes" lists only lines you actually modified. "reason" is one short sentence.
-- "supportedKeywords": for each JD term you judge the candidate already supports (used in the resume or implied by a clear synonym), include an entry with "evidence" set to an EXACT, VERBATIM quote copied character-for-character from <original_resume> that proves it. Do not paraphrase or summarize the evidence — copy the exact substring. If you cannot find an exact quote, omit that term from this list entirely (it is not evidence-backed).`;
+- "supportedKeywords": for each JD term you judge the candidate already supports (used in the resume or implied by a clear synonym), include an entry with "evidence" set to an EXACT, VERBATIM quote copied character-for-character from <original_resume> that proves it. Do not paraphrase or summarize the evidence — copy the exact substring. If you cannot find an exact quote, omit that term from this list entirely (it is not evidence-backed). Look for evidence in every section of the original resume, including Certifications and responsibility descriptions, not only Skills. A certification or a clear description of the work (e.g. "end-to-end across workflow, server, and client" for "full stack") counts as evidence.`;
 
 interface TailorRequest {
   resume: string;

@@ -1,5 +1,7 @@
 "use client";
 
+import { flagLargeDeletion } from "@/lib/resume-validator";
+
 export interface Change {
   section: string;
   original: string;
@@ -33,6 +35,7 @@ export default function ChangesDiff({
       <ul className="flex flex-col gap-4">
         {changes.map((change, i) => {
           const isRejected = rejectedIndices?.has(i);
+          const isLargeDeletion = flagLargeDeletion(change.original, change.revised);
           return (
             <li key={i} className="rounded-lg border border-border bg-surface p-4">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -83,6 +86,12 @@ export default function ChangesDiff({
               {failedIndices?.has(i) && (
                 <p className="mt-2 text-xs font-medium text-error-text">
                   This line was edited. Please update it manually.
+                </p>
+              )}
+
+              {isLargeDeletion && (
+                <p className="mt-2 inline-block rounded-full border border-error-border bg-error-bg px-2 py-0.5 text-xs font-medium text-error-text">
+                  ⚠ Large deletion — check that no facts were removed
                 </p>
               )}
 

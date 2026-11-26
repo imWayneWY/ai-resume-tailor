@@ -16,6 +16,8 @@ interface MatchScoreProps {
   serverAfterScore?: number;
   /** JD terms the AI flagged as unsupported by the original resume/confirmed facts. */
   missingKeywords?: { term: string; question: string }[];
+  /** JD terms the candidate has confirmed they actually have experience with. */
+  confirmedKeywords?: string[];
 }
 
 function ScoreCircle({
@@ -90,6 +92,7 @@ export default function MatchScore({
   serverBeforeScore,
   serverAfterScore,
   missingKeywords,
+  confirmedKeywords,
 }: MatchScoreProps) {
   // Use LLM-extracted keywords if available, otherwise fall back to regex
   const jdKeywords = useMemo(() => {
@@ -121,31 +124,37 @@ export default function MatchScore({
   // Client-side fallback computes raw percentage then curves it here.
   const beforeScoreNum = hasServerScores ? serverBeforeScore! : curveScore(totalKw > 0 && beforeScore ? Math.round((beforeScore.matchCount / totalKw) * 100) : 0);
 
-  // "Keyword coverage backed by real experience": only credit JD keywords the
-  // model actually matched in the tailored resume AND did not flag as
-  // unsupported in missingKeywords — i.e. keywords genuinely backed by the
-  // original resume or facts the candidate has since confirmed.
-  const unconfirmedTerms = useMemo(() => {
-    const terms = new Set<string>();
-    for (const mk of missingKeywords || []) {
-      if (mk?.term) terms.add(mk.term.toLowerCase().trim());
+  // "Backed coverage": JD keywords matched in the ORIGINAL resume (facts the
+  // candidate already demonstrably has), plus keywords the candidate has
+  // since confirmed via the Missing Keywords flow — divided by the total
+  // number of JD keywords. This does not depend on the model reporting
+  // itself honestly, and it is not a measurement of the tailored text.
+  const confirmedSet = useMemo(() => {
+    const set = new Set<string>();
+    for (const term of confirmedKeywords || []) {
+      if (term) set.add(term.toLowerCase().trim());
     }
-    return terms;
-  }, [missingKeywords]);
+    return set;
+  }, [confirmedKeywords]);
+
+  const originalMatchedScore = useMemo(
+    () => calculateMatchScore(originalResume, jdKeywords),
+    [originalResume, jdKeywords]
+  );
 
   const backedCoverageNum = useMemo(() => {
     if (totalKw === 0) return 0;
-    let backedCount = 0;
-    for (const matched of afterScore.matchedKeywords) {
-      if (!unconfirmedTerms.has(matched.toLowerCase().trim())) {
-        backedCount += 1;
-      }
+    const backed = new Set<string>();
+    for (const matched of originalMatchedScore.matchedKeywords) {
+      backed.add(matched.toLowerCase().trim());
     }
-    return curveScore(Math.round((backedCount / totalKw) * 100));
-  }, [afterScore, unconfirmedTerms, totalKw]);
+    for (const term of confirmedSet) {
+      backed.add(term);
+    }
+    return curveScore(Math.round((backed.size / totalKw) * 100));
+  }, [originalMatchedScore, confirmedSet, totalKw]);
 
   const afterScoreNum = backedCoverageNum;
-  const scoreImprovement = afterScoreNum - beforeScoreNum;
 
   // Log keywords to browser console for inspection (only when doing client-side scoring)
   useEffect(() => {
@@ -170,14 +179,20 @@ export default function MatchScore({
     }
   }, [afterScore, hasServerScores, serverBeforeScore, serverAfterScore, jdKeywords.size, usingLlm]);
 
+  // Suppress unused-var lint for missingKeywords — kept in the prop list for
+  // API compatibility with callers that still pass it, even though scoring
+  // no longer depends on it directly.
+  void missingKeywords;
+
   return (
     <div className="rounded-lg border border-border bg-card p-4 shadow-sm sm:p-6">
       <h2 className="mb-1 text-sm font-medium uppercase tracking-wide text-muted">
         Keyword coverage backed by real experience
       </h2>
       <p className="mb-4 text-xs text-muted">
-        &quot;Before&quot; is the raw JD match score for context. &quot;After&quot; only counts keywords the
-        original resume or your confirmed facts actually support.
+        &quot;Before&quot; is the raw JD match score for context. &quot;After&quot; measures JD
+        keywords backed by your original resume or facts you&apos;ve confirmed —
+        these two scores use different methods and are not directly comparable.
       </p>
 
       {/* Score circles */}
@@ -187,7 +202,7 @@ export default function MatchScore({
           label="Before (raw match)"
         />
 
-        {/* Arrow with improvement */}
+        {/* Arrow (no numeric improvement indicator — before/after use different scoring methods) */}
         <div className="flex flex-col items-center gap-1">
           <svg
             className="h-6 w-6 text-muted"
@@ -203,11 +218,6 @@ export default function MatchScore({
               d="M13 7l5 5m0 0l-5 5m5-5H6"
             />
           </svg>
-          {scoreImprovement > 0 && (
-            <span className="text-xs font-semibold text-success-text">
-              +{scoreImprovement}
-            </span>
-          )}
         </div>
 
         <ScoreCircle

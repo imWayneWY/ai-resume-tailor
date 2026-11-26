@@ -9,11 +9,11 @@ export interface MissingKeywordItem {
 
 interface MissingKeywordsProps {
   missingKeywords: MissingKeywordItem[];
-  onRegenerate: (confirmedFacts: string) => void;
+  onRegenerate: (confirmedFacts: string, confirmedTerms: string[]) => void;
   isRegenerating?: boolean;
 }
 
-export default function MissingKeywords({
+function MissingKeywordsInner({
   missingKeywords,
   onRegenerate,
   isRegenerating = false,
@@ -21,13 +21,18 @@ export default function MissingKeywords({
   const [checked, setChecked] = useState<Record<number, boolean>>({});
   const [explanations, setExplanations] = useState<Record<number, string>>({});
 
-  const confirmedFacts = useMemo(() => {
+  const confirmed = useMemo(() => {
     return missingKeywords
       .map((item, i) => ({ item, i }))
-      .filter(({ i }) => checked[i] && explanations[i]?.trim())
-      .map(({ item, i }) => `- ${item.term}: ${explanations[i].trim()}`)
-      .join("\n");
+      .filter(({ i }) => checked[i] && explanations[i]?.trim());
   }, [missingKeywords, checked, explanations]);
+
+  const confirmedFacts = useMemo(
+    () => confirmed.map(({ item, i }) => `- ${item.term}: ${explanations[i].trim()}`).join("\n"),
+    [confirmed, explanations]
+  );
+
+  const confirmedTerms = useMemo(() => confirmed.map(({ item }) => item.term), [confirmed]);
 
   const hasAnyConfirmed = confirmedFacts.length > 0;
 
@@ -71,7 +76,7 @@ export default function MissingKeywords({
         ))}
       </ul>
       <button
-        onClick={() => onRegenerate(confirmedFacts)}
+        onClick={() => onRegenerate(confirmedFacts, confirmedTerms)}
         disabled={!hasAnyConfirmed || isRegenerating}
         className="mt-4 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
       >
@@ -79,4 +84,13 @@ export default function MissingKeywords({
       </button>
     </div>
   );
+}
+
+/**
+ * Keys on the term list (joined) so checkbox/explanation state resets
+ * whenever the set of missing keywords changes (e.g. after regenerating).
+ */
+export default function MissingKeywords(props: MissingKeywordsProps) {
+  const key = props.missingKeywords.map((m) => m.term).join("|");
+  return <MissingKeywordsInner key={key} {...props} />;
 }

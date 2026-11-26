@@ -13,6 +13,7 @@ interface ChangesDiffProps {
   onAccept: (index: number) => void;
   onReject: (index: number) => void;
   rejectedIndices?: Set<number>;
+  failedIndices?: Set<number>;
 }
 
 export default function ChangesDiff({
@@ -20,6 +21,7 @@ export default function ChangesDiff({
   onAccept,
   onReject,
   rejectedIndices,
+  failedIndices,
 }: ChangesDiffProps) {
   if (!changes || changes.length === 0) return null;
 
@@ -77,6 +79,12 @@ export default function ChangesDiff({
               </div>
 
               <p className="mt-2 text-xs text-muted">{change.reason}</p>
+
+              {failedIndices?.has(i) && (
+                <p className="mt-2 text-xs font-medium text-error-text">
+                  This line was edited. Please update it manually.
+                </p>
+              )}
 
               {change.jdTermsUsed && change.jdTermsUsed.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1">

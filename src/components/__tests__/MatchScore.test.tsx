@@ -74,7 +74,7 @@ describe("MatchScore", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows improvement indicator when after score is higher", () => {
+  it("does not show an improvement indicator (before/after use different scoring methods)", () => {
     const propsWithGuaranteedImprovement = {
       originalResume: "React",
       tailoredResume: "React TypeScript Node.js Python",
@@ -83,9 +83,9 @@ describe("MatchScore", () => {
 
     render(<MatchScore {...propsWithGuaranteedImprovement} />);
 
-    // Improvement shows as "+N" (raw number, not percentage)
-    const improvement = screen.getByText(/^\+\d+$/);
-    expect(improvement).toBeInTheDocument();
+    // No "+N" improvement indicator is rendered anymore.
+    const improvement = screen.queryByText(/^\+\d+$/);
+    expect(improvement).not.toBeInTheDocument();
   });
 
   it("does not show improvement indicator when scores are equal", () => {
@@ -113,9 +113,29 @@ describe("MatchScore", () => {
     };
 
     render(<MatchScore {...props} />);
-    // Score numbers should still render without crashing.
-    const numericValues = screen.getAllByText(/^\d+$/);
-    expect(numericValues.length).toBeGreaterThanOrEqual(2);
+    // Backed coverage = JD keywords matched in the ORIGINAL resume (just
+    // "react" out of 4 total JD keywords) plus any confirmed keywords (none
+    // here) — i.e. 1/4 = 25%, curved.
+    const scoreCircles = screen.getAllByText(/^\d+$/);
+    const afterScoreText = scoreCircles[scoreCircles.length - 1].textContent;
+    const afterScoreNum = Number(afterScoreText);
+    expect(afterScoreNum).toBeGreaterThan(0);
+    expect(afterScoreNum).toBeLessThan(100);
+  });
+
+  it("includes confirmed keywords in the backed coverage score", () => {
+    const props = {
+      originalResume: "React",
+      tailoredResume: "React TypeScript Node.js Python",
+      jobDescription: "React TypeScript Node.js Python",
+      confirmedKeywords: ["typescript", "node.js", "python"],
+    };
+
+    render(<MatchScore {...props} />);
+    // All 4 JD keywords are now backed (1 from original resume + 3 confirmed) -> 100%.
+    const scoreCircles = screen.getAllByText(/^\d+$/);
+    const afterScoreText = scoreCircles[scoreCircles.length - 1].textContent;
+    expect(Number(afterScoreText)).toBe(100);
   });
 
   describe("LLM keywords", () => {

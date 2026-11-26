@@ -75,7 +75,7 @@ export function validateTailoredResume(
   // --- Banned phrases ---
   const bannedPhraseHits: BannedPhraseHit[] = [];
   for (const phrase of BANNED_PHRASES) {
-    const pattern = new RegExp(escapeRegExp(phrase), "gi");
+    const pattern = new RegExp(`\\b${escapeRegExp(phrase)}\\b`, "gi");
     let match: RegExpExecArray | null;
     while ((match = pattern.exec(tailoredText)) !== null) {
       bannedPhraseHits.push({
@@ -100,6 +100,10 @@ export function validateTailoredResume(
 
   // --- Overused keywords ---
   const overusedKeywords: OverusedKeyword[] = [];
+  const nonSkillsText = tailoredSections
+    .filter((s) => !(s?.title && /skills/i.test(s.title)))
+    .map((s) => s?.content ?? "")
+    .join("\n");
   for (const rawKeyword of jdKeywords) {
     const keyword = rawKeyword.trim();
     if (!keyword) continue;
@@ -109,8 +113,8 @@ export function validateTailoredResume(
       .map((part) => escapeRegExp(part))
       .join("[\\s/\\-]+");
     if (flexPattern.length === 0) continue;
-    const pattern = new RegExp(flexPattern, "gi");
-    const matches = tailoredText.match(pattern);
+    const pattern = new RegExp(`\\b${flexPattern}\\b`, "gi");
+    const matches = nonSkillsText.match(pattern);
     const count = matches ? matches.length : 0;
     if (count > 2) {
       overusedKeywords.push({ term: keyword, count });
@@ -127,12 +131,27 @@ export function validateTailoredResume(
   }
 
   // --- New proper nouns (present in tailored, absent from original) ---
+  // A capitalized word is a candidate proper noun unless it sits right at
+  // the start of a sentence/line/bullet (where the prompt now requires a
+  // verb like "Built", "Shipped", "Fixed") or it already appears somewhere
+  // (case-insensitively) in the original resume.
   const PROPER_NOUN_RE = /\b[A-Z][a-zA-Z0-9+.#-]{2,}\b/g;
-  const originalProperNouns = new Set(originalText.match(PROPER_NOUN_RE) || []);
-  const tailoredProperNouns = new Set(tailoredText.match(PROPER_NOUN_RE) || []);
+  // Matches a sentence/line/bullet boundary immediately preceding a position.
+  const SENTENCE_START_BOUNDARY_RE = /(^|\n|\. |• |- |: )$/;
+  const lowerOriginal = originalText.toLowerCase();
   const newProperNouns: string[] = [];
-  for (const noun of Array.from(tailoredProperNouns)) {
-    if (!originalProperNouns.has(noun)) newProperNouns.push(noun);
+  const seen = new Set<string>();
+  let nounMatch: RegExpExecArray | null;
+  while ((nounMatch = PROPER_NOUN_RE.exec(tailoredText)) !== null) {
+    const word = nounMatch[0];
+    const precedingText = tailoredText.slice(0, nounMatch.index);
+    const atSentenceStart = SENTENCE_START_BOUNDARY_RE.test(precedingText) || nounMatch.index === 0;
+    if (atSentenceStart) continue;
+    const lowerWord = word.toLowerCase();
+    if (lowerOriginal.includes(lowerWord)) continue;
+    if (seen.has(word)) continue;
+    seen.add(word);
+    newProperNouns.push(word);
   }
 
   return {

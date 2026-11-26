@@ -59,9 +59,17 @@ Fix any violation before output.
 Return only JSON matching this shape:
 {
   "jobTitle": string,
-  "personalInfo": {...},
-  "sections": [...],
-  "coverLetter": string | null,
+  "personalInfo": {
+    "fullName": string,
+    "email": string,
+    "phone": string,
+    "location": string,
+    "linkedin": string
+  },
+  "sections": [
+    { "title": string, "content": string }
+  ],
+  "coverLetter": string,
   "changes": [
     { "section": string, "original": string, "revised": string, "reason": string, "jdTermsUsed": string[] }
   ],
@@ -69,7 +77,11 @@ Return only JSON matching this shape:
     { "term": string, "question": string }
   ]
 }
-"changes" lists only lines you actually modified. "reason" is one short sentence.`;
+- "personalInfo": extract fullName, email, phone, location, and linkedin from <original_resume> only — never from the job description. Omit any field that is not present in the resume. "location" is city/province/country only (no street address).
+- "jobTitle": the exact title stated in the job description. Omit this field entirely if the job description does not clearly state a title. Never guess or infer one.
+- Each section's "content" is plain text with newlines (no markdown lists). Experience entries use this exact format: "**Company Name** — Role Title (Date Range)" on its own line, followed by bullets that each start with "• ".
+- Omit the "coverLetter" field entirely unless a cover letter was requested. Never return it as null.
+- "changes" lists only lines you actually modified. "reason" is one short sentence.`;
 
 interface TailorRequest {
   resume: string;
@@ -288,6 +300,39 @@ function parseAndValidateResponse(text: string): NextResponse | ParsedResult {
   if (parsed.coverLetter) {
     const cleanedCoverLetter = cleanAiPhrases(parsed.coverLetter);
     parsed.coverLetter = cleanedCoverLetter.text;
+  }
+
+  if (Array.isArray(parsed.changes)) {
+    parsed.changes = parsed.changes
+      .filter(
+        (c): c is Change =>
+          !!c &&
+          typeof c === "object" &&
+          typeof c.section === "string" &&
+          typeof c.original === "string" &&
+          typeof c.revised === "string" &&
+          typeof c.reason === "string"
+      )
+      .map((c) => ({
+        ...c,
+        jdTermsUsed: Array.isArray(c.jdTermsUsed)
+          ? c.jdTermsUsed.filter((t): t is string => typeof t === "string")
+          : [],
+      }));
+  } else {
+    delete parsed.changes;
+  }
+
+  if (Array.isArray(parsed.missingKeywords)) {
+    parsed.missingKeywords = parsed.missingKeywords.filter(
+      (m): m is MissingKeyword =>
+        !!m &&
+        typeof m === "object" &&
+        typeof m.term === "string" &&
+        typeof m.question === "string"
+    );
+  } else {
+    delete parsed.missingKeywords;
   }
 
   return parsed;

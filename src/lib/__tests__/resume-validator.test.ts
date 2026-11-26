@@ -74,4 +74,70 @@ describe("validateTailoredResume", () => {
     const result = validateTailoredResume(original, tailored, []);
     expect(result.newProperNouns).toEqual([]);
   });
+
+  it("does not flag a capitalized verb at the start of a bullet as a new proper noun", () => {
+    const tailored = [
+      { title: "Experience", content: "• Built a checkout flow using Stripe." },
+    ];
+    const result = validateTailoredResume(original, tailored, []);
+    expect(result.newProperNouns).not.toContain("Built");
+  });
+
+  it("does not flag a capitalized verb at the start of a line or after a period as a new proper noun", () => {
+    const tailored = [
+      {
+        title: "Experience",
+        content: "Shipped a new onboarding flow. Fixed a critical bug in checkout.",
+      },
+    ];
+    const result = validateTailoredResume(original, tailored, []);
+    expect(result.newProperNouns).not.toContain("Shipped");
+    expect(result.newProperNouns).not.toContain("Fixed");
+  });
+
+  it("flags a new proper noun that appears mid-sentence", () => {
+    const tailored = [
+      { title: "Skills", content: "Experienced with Kubernetes and Snowflake." },
+    ];
+    const result = validateTailoredResume(original, tailored, []);
+    expect(result.newProperNouns).toEqual(expect.arrayContaining(["Kubernetes", "Snowflake"]));
+  });
+
+  it("does not flag a word that appears case-insensitively anywhere in the original resume", () => {
+    const tailored = [{ title: "Experience", content: "Built the JEST test suite from scratch." }];
+    const result = validateTailoredResume(original, tailored, []);
+    expect(result.newProperNouns).not.toContain("JEST");
+  });
+
+  it("adds word boundaries to the banned-phrase regex so it does not match a longer word", () => {
+    const tailored = [{ title: "Summary", content: "Works dynamically across teams." }];
+    const result = validateTailoredResume(original, tailored, []);
+    expect(result.bannedPhraseHits).toEqual([]);
+  });
+
+  it("adds word boundaries to the keyword overuse counter so it does not match a longer word", () => {
+    const tailored = [
+      {
+        title: "Experience",
+        content: "Used JavaScript extensively. JavaScript again. JavaScript once more.",
+      },
+    ];
+    const result = validateTailoredResume(original, tailored, ["Java"]);
+    expect(result.overusedKeywords).toEqual([]);
+  });
+
+  it("excludes the Skills section from the keyword overuse count", () => {
+    const tailored = [
+      {
+        title: "Skills",
+        content: "Playwright, Playwright, Playwright, Playwright",
+      },
+      {
+        title: "Experience",
+        content: "Used Playwright for testing.",
+      },
+    ];
+    const result = validateTailoredResume(original, tailored, ["Playwright"]);
+    expect(result.overusedKeywords).toEqual([]);
+  });
 });

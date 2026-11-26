@@ -35,6 +35,112 @@ interface Section {
   content: string;
 }
 
+interface ValidationResult {
+  bannedPhraseHits: { phrase: string; context: string }[];
+  tackedOnClauseHits: { clause: string; context: string }[];
+  overusedKeywords: { term: string; count: number }[];
+  newNumbers: string[];
+  newProperNouns: string[];
+}
+
+/**
+ * Surfaces the deterministic guardrail checks run against the AI's output
+ * right after generation. This is a check of what the model produced, not
+ * of any manual edits made afterward in the Edit Sections panel.
+ */
+function GeneratedContentChecks({ validation }: { validation: ValidationResult }) {
+  const hasAnyHits =
+    validation.bannedPhraseHits.length > 0 ||
+    validation.tackedOnClauseHits.length > 0 ||
+    validation.overusedKeywords.length > 0 ||
+    validation.newNumbers.length > 0 ||
+    validation.newProperNouns.length > 0;
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-4 shadow-sm sm:p-6">
+      <h2 className="mb-1 text-sm font-medium uppercase tracking-wide text-muted">
+        Generated content checks
+      </h2>
+      <p className="mb-4 text-xs text-muted">
+        Automated checks run on the AI&apos;s output right after it was generated.
+        These do not reflect any manual edits you make below.
+      </p>
+
+      {!hasAnyHits && (
+        <p className="text-sm text-muted">No issues found in the generated content.</p>
+      )}
+
+      {validation.bannedPhraseHits.length > 0 && (
+        <div className="mb-3">
+          <p className="mb-1 text-xs font-semibold text-muted">Banned phrases</p>
+          <ul className="flex flex-col gap-1">
+            {validation.bannedPhraseHits.map((hit, i) => (
+              <li key={i} className="text-sm">
+                <span className="font-medium text-error-text">{hit.phrase}</span>
+                <span className="text-muted"> — &quot;{hit.context}&quot;</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {validation.tackedOnClauseHits.length > 0 && (
+        <div className="mb-3">
+          <p className="mb-1 text-xs font-semibold text-muted">Tacked-on clauses</p>
+          <ul className="flex flex-col gap-1">
+            {validation.tackedOnClauseHits.map((hit, i) => (
+              <li key={i} className="text-sm">
+                <span className="font-medium text-error-text">{hit.clause}</span>
+                <span className="text-muted"> — &quot;{hit.context}&quot;</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {validation.overusedKeywords.length > 0 && (
+        <div className="mb-3">
+          <p className="mb-1 text-xs font-semibold text-muted">Overused keywords</p>
+          <ul className="flex flex-col gap-1">
+            {validation.overusedKeywords.map((kw, i) => (
+              <li key={i} className="text-sm">
+                <span className="font-medium text-error-text">{kw.term}</span>
+                <span className="text-muted"> — used {kw.count} times</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {validation.newNumbers.length > 0 && (
+        <div className="mb-3">
+          <p className="mb-1 text-xs font-semibold text-muted">New numbers not in the original resume</p>
+          <ul className="flex flex-wrap gap-2">
+            {validation.newNumbers.map((n, i) => (
+              <li key={i} className="rounded-full border border-error-border bg-error-bg px-2 py-0.5 text-xs text-error-text">
+                {n}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {validation.newProperNouns.length > 0 && (
+        <div>
+          <p className="mb-1 text-xs font-semibold text-muted">New proper nouns not in the original resume</p>
+          <ul className="flex flex-wrap gap-2">
+            {validation.newProperNouns.map((n, i) => (
+              <li key={i} className="rounded-full border border-error-border bg-error-bg px-2 py-0.5 text-xs text-error-text">
+                {n}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface PersonalInfo {
   fullName: string;
   email: string;
@@ -92,6 +198,7 @@ export default function ResultPage() {
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [regenerateError, setRegenerateError] = useState("");
   const [rejectedChangeIndices, setRejectedChangeIndices] = useState<Set<number>>(new Set());
+  const [confirmedKeywords, setConfirmedKeywords] = useState<string[]>([]);
 
   useEffect(() => {
     const stored = sessionStorage.getItem("tailorResult");
@@ -157,34 +264,65 @@ export default function ResultPage() {
     });
   }, []);
 
-  const handleAcceptChange = useCallback((index: number) => {
-    setRejectedChangeIndices((prev) => {
-      const next = new Set(prev);
-      next.delete(index);
-      return next;
-    });
-  }, []);
+  const handleAcceptChange = useCallback(
+    (index: number) => {
+      const change = result?.changes?.[index];
+      if (change) {
+        setEditableSections((prev) =>
+          prev.map((section) =>
+            section.title === change.section
+              ? { ...section, content: section.content.replace(change.original, change.revised) }
+              : section
+          )
+        );
+      }
+      setRejectedChangeIndices((prev) => {
+        const next = new Set(prev);
+        next.delete(index);
+        return next;
+      });
+    },
+    [result]
+  );
+
+  const [editFailedIndices, setEditFailedIndices] = useState<Set<number>>(new Set());
 
   const handleRejectChange = useCallback(
     (index: number) => {
       const change = result?.changes?.[index];
       if (!change) return;
+      let matched = false;
       setEditableSections((prev) =>
-        prev.map((section) =>
-          section.title === change.section
-            ? { ...section, content: section.content.split(change.revised).join(change.original) }
-            : section
-        )
+        prev.map((section) => {
+          if (section.title !== change.section) return section;
+          if (!section.content.includes(change.revised)) {
+            return section;
+          }
+          matched = true;
+          return { ...section, content: section.content.replace(change.revised, change.original) };
+        })
       );
       setRejectedChangeIndices((prev) => new Set(prev).add(index));
+      setEditFailedIndices((prev) => {
+        const next = new Set(prev);
+        if (matched) {
+          next.delete(index);
+        } else {
+          next.add(index);
+        }
+        return next;
+      });
     },
     [result]
   );
 
   const handleRegenerate = useCallback(
-    async (confirmedFacts: string) => {
+    async (confirmedFacts: string, confirmedTerms: string[]) => {
       setRegenerateError("");
       setIsRegenerating(true);
+      // Accumulate confirmed keywords across regenerations so earlier
+      // confirmations from previous rounds aren't lost.
+      setConfirmedKeywords((prev) => Array.from(new Set([...prev, ...confirmedTerms])));
       try {
         const requestBody: Record<string, unknown> = {
           resume: originalResume,
@@ -376,6 +514,7 @@ export default function ResultPage() {
             serverBeforeScore={result?.beforeScore}
             serverAfterScore={result?.afterScore}
             missingKeywords={result?.missingKeywords}
+            confirmedKeywords={confirmedKeywords}
           />
         </div>
       )}
@@ -401,6 +540,13 @@ export default function ResultPage() {
         </div>
       )}
 
+      {/* Generated content checks */}
+      {result.validation && (
+        <div className="mb-6 sm:mb-8">
+          <GeneratedContentChecks validation={result.validation} />
+        </div>
+      )}
+
       {/* Changes diff */}
       {result.changes && result.changes.length > 0 && (
         <div className="mb-6 sm:mb-8">
@@ -409,6 +555,7 @@ export default function ResultPage() {
             onAccept={handleAcceptChange}
             onReject={handleRejectChange}
             rejectedIndices={rejectedChangeIndices}
+            failedIndices={editFailedIndices}
           />
         </div>
       )}

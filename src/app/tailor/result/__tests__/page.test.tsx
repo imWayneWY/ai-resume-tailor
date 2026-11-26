@@ -383,4 +383,63 @@ describe("ResultPage", () => {
 
     expect(screen.getByRole("button", { name: /download pdf/i })).toBeInTheDocument();
   });
+
+  describe("ChangesDiff accept/reject", () => {
+    const resultWithChanges = {
+      ...validResult,
+      sections: [
+        { title: "Summary", content: "Built scalable systems." },
+      ],
+      changes: [
+        {
+          section: "Summary",
+          original: "Built things.",
+          revised: "Built scalable systems.",
+          reason: "Clarified scope.",
+          jdTermsUsed: ["scalable"],
+        },
+      ],
+    };
+
+    it("rejecting then accepting a change restores the revised text", async () => {
+      const user = userEvent.setup();
+      sessionStore.tailorResult = JSON.stringify(resultWithChanges);
+      render(<ResultPage />);
+
+      const rejectButton = screen.getByRole("button", { name: /reject/i });
+      await user.click(rejectButton);
+
+      // After reject, the section content should show the original text.
+      await waitFor(() => {
+        expect(screen.getAllByText(/Built things\./).length).toBeGreaterThan(0);
+      });
+
+      const acceptButton = screen.getByRole("button", { name: /accept/i });
+      await user.click(acceptButton);
+
+      // After accept, the revised text should be restored.
+      await waitFor(() => {
+        expect(screen.getAllByText(/Built scalable systems\./).length).toBeGreaterThan(0);
+      });
+    });
+
+    it("shows a manual-edit message when rejecting a change whose revised text no longer matches", async () => {
+      const user = userEvent.setup();
+      const resultWithStaleChange = {
+        ...resultWithChanges,
+        sections: [{ title: "Summary", content: "Something else entirely." }],
+      };
+      sessionStore.tailorResult = JSON.stringify(resultWithStaleChange);
+      render(<ResultPage />);
+
+      const rejectButton = screen.getByRole("button", { name: /reject/i });
+      await user.click(rejectButton);
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(/this line was edited\. please update it manually\./i)
+        ).toBeInTheDocument();
+      });
+    });
+  });
 });

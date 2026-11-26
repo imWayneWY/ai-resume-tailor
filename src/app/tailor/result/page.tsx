@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import MatchScore from "@/components/MatchScore";
-import MissingKeywords, { type MissingKeywordItem } from "@/components/MissingKeywords";
+import MissingKeywords, { type MissingKeywordItem, type ConfirmedFactEntry } from "@/components/MissingKeywords";
 import ChangesDiff, { type Change } from "@/components/ChangesDiff";
 
 /**
@@ -198,7 +198,13 @@ export default function ResultPage() {
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [regenerateError, setRegenerateError] = useState("");
   const [rejectedChangeIndices, setRejectedChangeIndices] = useState<Set<number>>(new Set());
-  const [confirmedKeywords, setConfirmedKeywords] = useState<string[]>([]);
+  // Accumulated confirmations across all regeneration rounds, keyed by term
+  // (lowercased, trimmed) so earlier rounds' explanations aren't lost when a
+  // later round sends its own confirmations. Both the confirmedFacts prompt
+  // text and the confirmedKeywords used for scoring are derived from this
+  // single source of truth.
+  const [confirmedFactsMap, setConfirmedFactsMap] = useState<Map<string, string>>(new Map());
+  const confirmedKeywords = useMemo(() => Array.from(confirmedFactsMap.keys()), [confirmedFactsMap]);
 
   useEffect(() => {
     const stored = sessionStorage.getItem("tailorResult");
@@ -317,12 +323,19 @@ export default function ResultPage() {
   );
 
   const handleRegenerate = useCallback(
-    async (confirmedFacts: string, confirmedTerms: string[]) => {
+    async (confirmedEntries: ConfirmedFactEntry[]) => {
       setRegenerateError("");
       setIsRegenerating(true);
-      // Accumulate confirmed keywords across regenerations so earlier
-      // confirmations from previous rounds aren't lost.
-      setConfirmedKeywords((prev) => Array.from(new Set([...prev, ...confirmedTerms])));
+      // Merge this round's confirmations into the accumulated map so earlier
+      // rounds' explanations aren't lost on subsequent regenerations.
+      const mergedMap = new Map(confirmedFactsMap);
+      for (const { term, explanation } of confirmedEntries) {
+        if (term) mergedMap.set(term, explanation);
+      }
+      setConfirmedFactsMap(mergedMap);
+      const confirmedFacts = Array.from(mergedMap.entries())
+        .map(([term, explanation]) => `- ${term}: ${explanation}`)
+        .join("\n");
       try {
         const requestBody: Record<string, unknown> = {
           resume: originalResume,
@@ -379,7 +392,7 @@ export default function ResultPage() {
         setIsRegenerating(false);
       }
     },
-    [originalResume, jobDescription, result, llmKeywords]
+    [originalResume, jobDescription, result, llmKeywords, confirmedFactsMap]
   );
 
   useEffect(() => {

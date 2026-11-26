@@ -442,4 +442,81 @@ describe("ResultPage", () => {
       });
     });
   });
+
+  describe("regeneration accumulates confirmed facts", () => {
+    const resultWithMissingKeywords = {
+      ...validResult,
+      missingKeywords: [
+        { term: "Kubernetes", question: "Have you used Kubernetes?" },
+        { term: "GraphQL", question: "Have you used GraphQL?" },
+      ],
+    };
+
+    beforeEach(() => {
+      global.fetch = jest.fn();
+    });
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it("includes both rounds' confirmations in the second request's confirmedFacts", async () => {
+      const user = userEvent.setup();
+      sessionStore.tailorResult = JSON.stringify(resultWithMissingKeywords);
+
+      const mockResponse = (data: unknown) => ({
+        ok: true,
+        headers: { get: () => "application/json" },
+        text: async () => JSON.stringify(data),
+      });
+
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce(mockResponse(resultWithMissingKeywords))
+        .mockResolvedValueOnce(mockResponse(resultWithMissingKeywords));
+
+      render(<ResultPage />);
+
+      // Round 1: confirm Kubernetes
+      const kubernetesCheckbox = screen.getByLabelText("Kubernetes");
+      await user.click(kubernetesCheckbox);
+      const explanationInputs = screen.getAllByPlaceholderText(
+        /one sentence explaining your experience/i
+      );
+      await user.type(explanationInputs[0], "Ran EKS clusters in production.");
+
+      const regenerateButton = screen.getByRole("button", {
+        name: /regenerate with confirmed facts/i,
+      });
+      await user.click(regenerateButton);
+
+      await waitFor(() => {
+        expect(global.fetch).toHaveBeenCalledTimes(1);
+      });
+
+      // Round 2: confirm GraphQL. MissingKeywords doesn't remount (same
+      // missingKeywords list key), so the Kubernetes checkbox/explanation
+      // from round 1 remain checked.
+      const explanationInputs2 = screen.getAllByPlaceholderText(
+        /one sentence explaining your experience/i
+      );
+      const graphqlCheckbox = screen.getByLabelText("GraphQL");
+      await user.click(graphqlCheckbox);
+      await user.type(explanationInputs2[1], "Built GraphQL APIs with Apollo.");
+
+      const regenerateButton2 = screen.getByRole("button", {
+        name: /regenerate with confirmed facts/i,
+      });
+      await user.click(regenerateButton2);
+
+      await waitFor(() => {
+        expect(global.fetch).toHaveBeenCalledTimes(2);
+      });
+
+      const secondCallBody = JSON.parse(
+        (global.fetch as jest.Mock).mock.calls[1][1].body
+      );
+      expect(secondCallBody.confirmedFacts).toContain("Kubernetes: Ran EKS clusters in production.");
+      expect(secondCallBody.confirmedFacts).toContain("GraphQL: Built GraphQL APIs with Apollo.");
+    });
+  });
 });

@@ -84,6 +84,13 @@ function ScoreCircle({
   );
 }
 
+function normalizeTerm(term: string): string {
+  return term
+    .toLowerCase()
+    .trim()
+    .replace(/[\s/-]+/g, " ");
+}
+
 export default function MatchScore({
   originalResume,
   tailoredResume,
@@ -129,13 +136,22 @@ export default function MatchScore({
   // since confirmed via the Missing Keywords flow — divided by the total
   // number of JD keywords. This does not depend on the model reporting
   // itself honestly, and it is not a measurement of the tailored text.
+  const jdKeywordsNormalized = useMemo(
+    () => new Set(Array.from(jdKeywords).map(normalizeTerm)),
+    [jdKeywords]
+  );
+
   const confirmedSet = useMemo(() => {
     const set = new Set<string>();
     for (const term of confirmedKeywords || []) {
-      if (term) set.add(term.toLowerCase().trim());
+      if (!term) continue;
+      const normalized = normalizeTerm(term);
+      if (jdKeywordsNormalized.has(normalized)) {
+        set.add(normalized);
+      }
     }
     return set;
-  }, [confirmedKeywords]);
+  }, [confirmedKeywords, jdKeywordsNormalized]);
 
   const originalMatchedScore = useMemo(
     () => calculateMatchScore(originalResume, jdKeywords),
@@ -146,12 +162,12 @@ export default function MatchScore({
     if (totalKw === 0) return 0;
     const backed = new Set<string>();
     for (const matched of originalMatchedScore.matchedKeywords) {
-      backed.add(matched.toLowerCase().trim());
+      backed.add(normalizeTerm(matched));
     }
     for (const term of confirmedSet) {
       backed.add(term);
     }
-    return curveScore(Math.round((backed.size / totalKw) * 100));
+    return curveScore(Math.min(100, Math.round((backed.size / totalKw) * 100)));
   }, [originalMatchedScore, confirmedSet, totalKw]);
 
   const afterScoreNum = backedCoverageNum;

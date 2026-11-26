@@ -1,6 +1,7 @@
 import React from "react";
 import { render, screen } from "@testing-library/react";
 import MatchScore from "@/components/MatchScore";
+import { curveScore } from "@/lib/score-curve";
 
 describe("MatchScore", () => {
   const defaultProps = {
@@ -119,8 +120,27 @@ describe("MatchScore", () => {
     const scoreCircles = screen.getAllByText(/^\d+$/);
     const afterScoreText = scoreCircles[scoreCircles.length - 1].textContent;
     const afterScoreNum = Number(afterScoreText);
-    expect(afterScoreNum).toBeGreaterThan(0);
-    expect(afterScoreNum).toBeLessThan(100);
+    const expected = curveScore(Math.round((1 / 4) * 100));
+    expect(afterScoreNum).toBe(expected);
+  });
+
+  it("does not count a confirmed term that doesn't map to a JD keyword", () => {
+    const props = {
+      originalResume: "React",
+      tailoredResume: "React TypeScript Node.js Python",
+      jobDescription: "React TypeScript Node.js Python",
+      confirmedKeywords: ["kubernetes"],
+    };
+
+    render(<MatchScore {...props} />);
+    // "kubernetes" isn't a JD keyword, so backed coverage should be unchanged
+    // from the baseline (1/4 = 25%, curved) — the unmatched confirmed term
+    // must not inflate the score.
+    const scoreCircles = screen.getAllByText(/^\d+$/);
+    const afterScoreText = scoreCircles[scoreCircles.length - 1].textContent;
+    const afterScoreNum = Number(afterScoreText);
+    const expected = curveScore(Math.round((1 / 4) * 100));
+    expect(afterScoreNum).toBe(expected);
   });
 
   it("includes confirmed keywords in the backed coverage score", () => {

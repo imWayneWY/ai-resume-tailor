@@ -7,9 +7,14 @@ export interface MissingKeywordItem {
   question: string;
 }
 
+export interface ConfirmedFactEntry {
+  term: string;
+  explanation: string;
+}
+
 interface MissingKeywordsProps {
   missingKeywords: MissingKeywordItem[];
-  onRegenerate: (confirmedFacts: string, confirmedTerms: string[]) => void;
+  onRegenerate: (confirmedEntries: ConfirmedFactEntry[]) => void;
   isRegenerating?: boolean;
 }
 
@@ -27,14 +32,12 @@ function MissingKeywordsInner({
       .filter(({ i }) => checked[i] && explanations[i]?.trim());
   }, [missingKeywords, checked, explanations]);
 
-  const confirmedFacts = useMemo(
-    () => confirmed.map(({ item, i }) => `- ${item.term}: ${explanations[i].trim()}`).join("\n"),
+  const confirmedEntries = useMemo<ConfirmedFactEntry[]>(
+    () => confirmed.map(({ item, i }) => ({ term: item.term, explanation: explanations[i].trim() })),
     [confirmed, explanations]
   );
 
-  const confirmedTerms = useMemo(() => confirmed.map(({ item }) => item.term), [confirmed]);
-
-  const hasAnyConfirmed = confirmedFacts.length > 0;
+  const hasAnyConfirmed = confirmedEntries.length > 0;
 
   if (!missingKeywords || missingKeywords.length === 0) return null;
 
@@ -76,7 +79,7 @@ function MissingKeywordsInner({
         ))}
       </ul>
       <button
-        onClick={() => onRegenerate(confirmedFacts, confirmedTerms)}
+        onClick={() => onRegenerate(confirmedEntries)}
         disabled={!hasAnyConfirmed || isRegenerating}
         className="mt-4 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
       >

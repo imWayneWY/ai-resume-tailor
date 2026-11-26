@@ -84,4 +84,27 @@ Built the Fantuan Reviews dashboard using GraphQL and React.`;
     expect(verified).toEqual([]);
     expect(verifiedTerms).toEqual([]);
   });
+
+  it("rejects a too-short evidence quote even if it appears verbatim in the resume", () => {
+    const supported: SupportedKeyword[] = [
+      { term: "React", evidence: "React" },
+      { term: "JavaScript", evidence: "a" },
+    ];
+
+    const { verified, verifiedTerms } = verifySupportedKeywords(originalResume, supported);
+
+    expect(verified).toEqual([]);
+    expect(verifiedTerms).toEqual([]);
+  });
+
+  it("accepts a valid-length real quote that supports the term", () => {
+    const supported: SupportedKeyword[] = [
+      { term: "GraphQL", evidence: "Built the Fantuan Reviews dashboard using GraphQL and React." },
+    ];
+
+    const { verified, verifiedTerms } = verifySupportedKeywords(originalResume, supported);
+
+    expect(verified).toEqual(supported);
+    expect(verifiedTerms).toEqual(["GraphQL"]);
+  });
 });

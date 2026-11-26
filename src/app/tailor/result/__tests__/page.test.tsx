@@ -108,6 +108,16 @@ describe("ResultPage", () => {
     expect(screen.getAllByText("Experience")).toHaveLength(2);
   });
 
+  it("renders FitSummary without throwing when tailorLlmKeywords is a legacy string[] from an older session", () => {
+    sessionStore.tailorResult = JSON.stringify(validResult);
+    sessionStore.tailorOriginalResume = "I know React and TypeScript";
+    sessionStore.tailorJobDescription = "React, TypeScript";
+    sessionStore.tailorLlmKeywords = JSON.stringify(["react", "typescript"]);
+
+    expect(() => render(<ResultPage />)).not.toThrow();
+    expect(screen.getByText("Fit summary")).toBeInTheDocument();
+  });
+
   it("renders section content in preview and edit", () => {
     sessionStore.tailorResult = JSON.stringify(validResult);
     render(<ResultPage />);

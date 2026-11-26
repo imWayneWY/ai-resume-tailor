@@ -202,7 +202,7 @@ interface ParsedResult {
   changes?: Change[];
   missingKeywords?: MissingKeyword[];
   supportedKeywords?: SupportedKeyword[];
-  verifiedSupportedKeywords?: string[];
+  verifiedSupportedKeywords?: SupportedKeyword[];
 }
 
 async function callAzureOpenAI(
@@ -360,9 +360,9 @@ function parseAndValidateResponse(text: string, originalResume: string): NextRes
         typeof s.term === "string" &&
         typeof s.evidence === "string"
     );
-    const { verified, verifiedTerms } = verifySupportedKeywords(originalResume, validSupportedKeywords);
+    const { verified } = verifySupportedKeywords(originalResume, validSupportedKeywords);
     parsed.supportedKeywords = verified;
-    parsed.verifiedSupportedKeywords = verifiedTerms;
+    parsed.verifiedSupportedKeywords = verified;
   } else {
     delete parsed.supportedKeywords;
     parsed.verifiedSupportedKeywords = [];

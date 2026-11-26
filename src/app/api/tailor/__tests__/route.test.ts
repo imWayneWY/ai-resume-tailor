@@ -937,7 +937,9 @@ Experience
       expect(json.supportedKeywords).toEqual([
         { term: "GraphQL", evidence: "I built the Fantuan Reviews dashboard using GraphQL and React." },
       ]);
-      expect(json.verifiedSupportedKeywords).toEqual(["GraphQL"]);
+      expect(json.verifiedSupportedKeywords).toEqual([
+        { term: "GraphQL", evidence: "I built the Fantuan Reviews dashboard using GraphQL and React." },
+      ]);
     });
 
     it("only includes verifiedSupportedKeywords whose evidence actually verifies against the original resume", async () => {
@@ -967,7 +969,9 @@ Experience
       const res = await POST(makeRequest({ ...validBody, resume: resumeText }));
       expect(res.status).toBe(200);
       const json = await res.json();
-      expect(json.verifiedSupportedKeywords).toEqual(["GraphQL"]);
+      expect(json.verifiedSupportedKeywords).toEqual([
+        { term: "GraphQL", evidence: "I built the Fantuan Reviews dashboard using GraphQL and React." },
+      ]);
       expect(json.supportedKeywords).toHaveLength(1);
       expect(json.supportedKeywords[0].term).toBe("GraphQL");
     });

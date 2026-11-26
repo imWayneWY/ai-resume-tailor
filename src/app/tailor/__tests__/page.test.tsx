@@ -368,6 +368,7 @@ describe("TailorPage", () => {
               { term: "react", category: "technical", required: true },
               { term: "typescript", category: "technical", required: true },
               { term: "node.js", category: "technical", required: false },
+              { term: "communication", category: "soft", required: false },
             ],
           }),
           {
@@ -394,6 +395,7 @@ describe("TailorPage", () => {
       );
       const fetchBody = JSON.parse((mockFetch.mock.calls[tailorCallIdx][1] as { body: string }).body);
       expect(fetchBody.targetKeywords).toEqual(["react", "typescript", "node.js"]);
+      expect(fetchBody.targetKeywords).not.toContain("communication");
     });
   });
 

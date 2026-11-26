@@ -28,7 +28,6 @@ const SYSTEM_PROMPT = `You are an expert ATS (Applicant Tracking System) keyword
 - **Methodologies:** Agile, Scrum, CI/CD, TDD, DevOps, etc.
 - **Domain-specific terms:** Terms specific to the industry or role (e.g., "payroll", "HRIS", "compliance", "underwriting", "federated login")
 - **Certifications:** PMP, AWS Certified, CPA, etc.
-- **Soft skills that are measurable:** "cross-functional collaboration", "stakeholder management", "mentoring"
 - **Job-specific requirements:** "distributed systems", "microservices", "API design", "system design"
 
 ## What to EXCLUDE
@@ -55,8 +54,8 @@ Each keyword must be labeled with:
 Return a JSON object with a single "keywords" array of objects, each shaped like:
 { "term": string, "category": "technical" | "domain" | "soft", "required": boolean }
 Keep multi-word phrases together (e.g., "state management" not "state" + "management"). Use lowercase for "term" except for recognized proper nouns/acronyms that are conventionally capitalized (e.g. "GraphQL", "AWS").
-Extract at least 35 keywords. Be thorough — include variations when they exist (e.g., both "React" and "React.js", both "CI/CD" and "continuous integration").
-Aim for 35-60 keywords. Cover as many of the categories above as clearly appear in the job description. Do NOT invent keywords for categories that are not supported by the text.
+Extract one entry per distinct concept — do NOT list variations of the same skill separately (e.g. pick either "React" or "React.js", not both; either "CI/CD" or "continuous integration", not both).
+Aim for 15-30 distinct keywords. Cover as many of the categories above as clearly appear in the job description. Do NOT invent keywords for categories that are not supported by the text.
 
 Example output:
 {"keywords": [

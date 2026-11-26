@@ -165,7 +165,7 @@ interface TailorResult {
   changes?: Change[];
   missingKeywords?: MissingKeywordItem[];
   supportedKeywords?: { term: string; evidence: string }[];
-  verifiedSupportedKeywords?: string[];
+  verifiedSupportedKeywords?: { term: string; evidence: string }[];
   validation?: {
     bannedPhraseHits: { phrase: string; context: string }[];
     tackedOnClauseHits: { clause: string; context: string }[];
@@ -257,7 +257,29 @@ export default function ResultPage() {
         try {
           const parsedKeywords = JSON.parse(storedKeywords);
           if (Array.isArray(parsedKeywords)) {
-            setLlmKeywords(parsedKeywords);
+            const normalized: FitSummaryKeyword[] = [];
+            for (const entry of parsedKeywords) {
+              if (typeof entry === "string") {
+                normalized.push({ term: entry, category: "domain", required: false });
+              } else if (
+                entry &&
+                typeof entry === "object" &&
+                typeof (entry as { term?: unknown }).term === "string"
+              ) {
+                const e = entry as { term: string; category?: unknown; required?: unknown };
+                const category =
+                  e.category === "technical" || e.category === "domain" || e.category === "soft"
+                    ? e.category
+                    : "domain";
+                normalized.push({
+                  term: e.term,
+                  category,
+                  required: e.required === true,
+                });
+              }
+              // anything else (malformed objects without a string term) is dropped
+            }
+            setLlmKeywords(normalized);
           }
         } catch {
           // Fall back to regex extraction
@@ -350,7 +372,9 @@ export default function ResultPage() {
           confirmedFacts,
         };
         if (llmKeywords) {
-          requestBody.targetKeywords = llmKeywords.map((k) => k.term);
+          requestBody.targetKeywords = llmKeywords
+            .filter((k) => k.category !== "soft")
+            .map((k) => k.term);
         }
 
         const response = await fetch("/api/tailor", {

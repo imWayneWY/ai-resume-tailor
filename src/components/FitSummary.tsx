@@ -10,13 +10,18 @@ export interface FitSummaryKeyword {
   required: boolean;
 }
 
+export interface VerifiedSupportedKeyword {
+  term: string;
+  evidence: string;
+}
+
 interface FitSummaryProps {
   originalResume: string;
   jobDescription: string;
   /** Categorized JD keywords from /api/extract-keywords. Falls back to regex extraction (all "domain", not required) if not provided. */
   llmKeywords?: FitSummaryKeyword[];
   /** JD terms the tailoring model backed with a verbatim quote from the original resume. */
-  verifiedSupportedKeywords?: string[];
+  verifiedSupportedKeywords?: VerifiedSupportedKeyword[];
   /** JD terms the AI flagged as unsupported by the original resume/confirmed facts. */
   missingKeywords?: { term: string; question: string }[];
   /** JD terms the candidate has confirmed they actually have experience with. */
@@ -35,14 +40,14 @@ function normalizeTerm(term: string): string {
 interface BackedGroup {
   total: number;
   backed: number;
-  items: { term: string; backed: boolean }[];
+  items: { term: string; backed: boolean; evidence?: string }[];
 }
 
 function KeywordChips({
   items,
   onReviewTerm,
 }: {
-  items: { term: string; backed: boolean }[];
+  items: { term: string; backed: boolean; evidence?: string }[];
   onReviewTerm?: (term: string) => void;
 }) {
   if (items.length === 0) {
@@ -50,7 +55,7 @@ function KeywordChips({
   }
   return (
     <ul className="flex flex-wrap gap-2">
-      {items.map(({ term, backed }) => {
+      {items.map(({ term, backed, evidence }) => {
         const chipClasses = backed
           ? "border-success-border bg-success-bg text-success-text"
           : "border-error-border bg-error-bg text-error-text";
@@ -59,6 +64,7 @@ function KeywordChips({
             <span aria-hidden="true">{backed ? "✓" : "✗"}</span> {term}
           </>
         );
+        const title = backed && evidence ? `Backed by: ${evidence}` : undefined;
         if (!backed && onReviewTerm) {
           return (
             <li key={term}>
@@ -75,6 +81,7 @@ function KeywordChips({
         return (
           <li
             key={term}
+            title={title}
             className={`rounded-full border px-2 py-0.5 text-xs font-medium ${chipClasses}`}
           >
             {content}
@@ -113,9 +120,17 @@ export default function FitSummary({
   );
 
   const verifiedSet = useMemo(
-    () => new Set((verifiedSupportedKeywords ?? []).map(normalizeTerm)),
+    () => new Set((verifiedSupportedKeywords ?? []).map((v) => normalizeTerm(v.term))),
     [verifiedSupportedKeywords]
   );
+
+  const evidenceByTerm = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const v of verifiedSupportedKeywords ?? []) {
+      map.set(normalizeTerm(v.term), v.evidence);
+    }
+    return map;
+  }, [verifiedSupportedKeywords]);
 
   const confirmedSet = useMemo(
     () => new Set((confirmedKeywords ?? []).map(normalizeTerm)),
@@ -155,7 +170,7 @@ export default function FitSummary({
       const group = kw.required ? required : niceToHave;
       group.total += 1;
       if (backed) group.backed += 1;
-      group.items.push({ term: kw.term, backed });
+      group.items.push({ term: kw.term, backed, evidence: evidenceByTerm.get(normalizeTerm(kw.term)) });
     }
 
     const denom = required.total * 2 + niceToHave.total * 1;
@@ -165,7 +180,7 @@ export default function FitSummary({
         : 0;
 
     return { requiredGroup: required, niceToHaveGroup: niceToHave, weightedScore: score };
-  }, [technicalAndDomain, isBacked]);
+  }, [technicalAndDomain, isBacked, evidenceByTerm]);
 
   return (
     <div className="rounded-lg border border-border bg-card p-4 shadow-sm sm:p-6">

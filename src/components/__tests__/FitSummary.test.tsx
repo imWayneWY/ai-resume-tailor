@@ -50,7 +50,7 @@ describe("FitSummary", () => {
         originalResume="I have never mentioned these terms"
         jobDescription="React, TypeScript, Docker"
         llmKeywords={defaultKeywords}
-        verifiedSupportedKeywords={["React", "TypeScript"]}
+        verifiedSupportedKeywords={[{ term: "React", evidence: "..." }, { term: "TypeScript", evidence: "..." }]}
       />
     );
     // Both required terms backed -> "Required: 2 / 2 backed"
@@ -115,5 +115,23 @@ describe("FitSummary", () => {
     );
     // required backed = 2, nice-to-have backed = 0 -> (2*2 + 0*1) / (2*2 + 1*1) * 100 = 80
     expect(screen.getByText("80")).toBeInTheDocument();
+  });
+
+  it("shows evidence as a tooltip (title attribute) on a backed chip", () => {
+    render(
+      <FitSummary
+        originalResume="I have never mentioned these terms"
+        jobDescription="React, TypeScript, Docker"
+        llmKeywords={defaultKeywords}
+        verifiedSupportedKeywords={[
+          { term: "React", evidence: "Built several production apps with React and Redux." },
+        ]}
+      />
+    );
+    const chip = screen.getByText(/React/).closest("li");
+    expect(chip).toHaveAttribute(
+      "title",
+      "Backed by: Built several production apps with React and Redux."
+    );
   });
 });

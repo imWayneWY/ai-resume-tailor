@@ -149,7 +149,9 @@ export default function TailorPage() {
           generateCoverLetter,
         };
         if (keywords) {
-          requestBody.targetKeywords = keywords.map((k) => k.term);
+          requestBody.targetKeywords = keywords
+            .filter((k) => k.category !== "soft")
+            .map((k) => k.term);
         }
 
         const tailorResponse = await fetch("/api/tailor", {

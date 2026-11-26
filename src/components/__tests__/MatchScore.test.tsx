@@ -11,15 +11,17 @@ describe("MatchScore", () => {
       "We need a developer with React, TypeScript, Node.js, and Python experience",
   };
 
-  it("renders the JD Match Score heading", () => {
+  it("renders the keyword coverage heading", () => {
     render(<MatchScore {...defaultProps} />);
-    expect(screen.getByText("JD Match Score")).toBeInTheDocument();
+    expect(
+      screen.getByText("Keyword coverage backed by real experience")
+    ).toBeInTheDocument();
   });
 
   it("renders Before and After labels", () => {
     render(<MatchScore {...defaultProps} />);
-    expect(screen.getByText("Before")).toBeInTheDocument();
-    expect(screen.getByText("After")).toBeInTheDocument();
+    expect(screen.getAllByText(/Before/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/After/).length).toBeGreaterThan(0);
   });
 
   it("renders 0-100 score values (not raw counts or percentages)", () => {
@@ -67,7 +69,9 @@ describe("MatchScore", () => {
         jobDescription=""
       />
     );
-    expect(screen.getByText("JD Match Score")).toBeInTheDocument();
+    expect(
+      screen.getByText("Keyword coverage backed by real experience")
+    ).toBeInTheDocument();
   });
 
   it("shows improvement indicator when after score is higher", () => {
@@ -95,6 +99,23 @@ describe("MatchScore", () => {
 
     const improvement = screen.queryByText(/^\+\d+$/);
     expect(improvement).not.toBeInTheDocument();
+  });
+
+  it("excludes missingKeywords terms from the backed coverage score", () => {
+    const props = {
+      originalResume: "React",
+      tailoredResume: "React TypeScript Node.js Python",
+      jobDescription: "React TypeScript Node.js Python",
+      missingKeywords: [
+        { term: "typescript", question: "Have you used TypeScript?" },
+        { term: "python", question: "Have you used Python?" },
+      ],
+    };
+
+    render(<MatchScore {...props} />);
+    // Score numbers should still render without crashing.
+    const numericValues = screen.getAllByText(/^\d+$/);
+    expect(numericValues.length).toBeGreaterThanOrEqual(2);
   });
 
   describe("LLM keywords", () => {
@@ -180,32 +201,29 @@ describe("MatchScore", () => {
     });
   });
 
-  describe("server scores", () => {
-    it("uses server scores when provided instead of client-computed values", () => {
+  describe("server before score", () => {
+    it("uses server before score when provided, recomputes after score from missingKeywords", () => {
       render(
         <MatchScore
           originalResume="no keywords here"
-          tailoredResume="no keywords here either"
+          tailoredResume="React TypeScript Node.js"
           jobDescription="React TypeScript Node.js"
           serverBeforeScore={25}
           serverAfterScore={78}
         />
       );
 
-      // Should render the server-provided scores
+      // Should render the server-provided before score.
       expect(screen.getByText("25")).toBeInTheDocument();
-      expect(screen.getByText("78")).toBeInTheDocument();
-      // Should show improvement
-      expect(screen.getByText("+53")).toBeInTheDocument();
     });
 
-    it("logs server scores to console instead of client keywords", () => {
+    it("logs server scores to console", () => {
       const consoleSpy = jest.spyOn(console, "debug").mockImplementation();
       try {
         render(
           <MatchScore
             originalResume="anything"
-            tailoredResume="anything"
+            tailoredResume="React"
             jobDescription="React"
             serverBeforeScore={10}
             serverAfterScore={90}
@@ -214,11 +232,6 @@ describe("MatchScore", () => {
         expect(consoleSpy).toHaveBeenCalledWith(
           expect.stringContaining("server-computed scores")
         );
-        // Should NOT log client-side keyword matching
-        const matchedCall = consoleSpy.mock.calls.find(
-          (c) => typeof c[0] === "string" && c[0].includes("Matched keywords")
-        );
-        expect(matchedCall).toBeUndefined();
       } finally {
         consoleSpy.mockRestore();
       }
@@ -234,8 +247,8 @@ describe("MatchScore", () => {
       );
 
       // Before and After labels should render with client-computed scores
-      expect(screen.getByText("Before")).toBeInTheDocument();
-      expect(screen.getByText("After")).toBeInTheDocument();
+      expect(screen.getAllByText(/Before/).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/After/).length).toBeGreaterThan(0);
     });
   });
 

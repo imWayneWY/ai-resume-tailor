@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import MatchScore from "@/components/MatchScore";
+import MissingKeywords, { type MissingKeywordItem } from "@/components/MissingKeywords";
+import ChangesDiff, { type Change } from "@/components/ChangesDiff";
 
 /**
  * Render **bold** markers in the preview pane so it matches the PDF instead
@@ -54,6 +56,15 @@ interface TailorResult {
   };
   beforeScore?: number;
   afterScore?: number;
+  changes?: Change[];
+  missingKeywords?: MissingKeywordItem[];
+  validation?: {
+    bannedPhraseHits: { phrase: string; context: string }[];
+    tackedOnClauseHits: { clause: string; context: string }[];
+    overusedKeywords: { term: string; count: number }[];
+    newNumbers: string[];
+    newProperNouns: string[];
+  };
 }
 
 export default function ResultPage() {
@@ -78,6 +89,9 @@ export default function ResultPage() {
   const [pdfGenerating, setPdfGenerating] = useState(false);
   const [pdfError, setPdfError] = useState("");
   const pdfGeneratingRef = useRef(false);
+  const [isRegenerating, setIsRegenerating] = useState(false);
+  const [regenerateError, setRegenerateError] = useState("");
+  const [rejectedChangeIndices, setRejectedChangeIndices] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     const stored = sessionStorage.getItem("tailorResult");
@@ -142,6 +156,93 @@ export default function ResultPage() {
       return next;
     });
   }, []);
+
+  const handleAcceptChange = useCallback((index: number) => {
+    setRejectedChangeIndices((prev) => {
+      const next = new Set(prev);
+      next.delete(index);
+      return next;
+    });
+  }, []);
+
+  const handleRejectChange = useCallback(
+    (index: number) => {
+      const change = result?.changes?.[index];
+      if (!change) return;
+      setEditableSections((prev) =>
+        prev.map((section) =>
+          section.title === change.section
+            ? { ...section, content: section.content.split(change.revised).join(change.original) }
+            : section
+        )
+      );
+      setRejectedChangeIndices((prev) => new Set(prev).add(index));
+    },
+    [result]
+  );
+
+  const handleRegenerate = useCallback(
+    async (confirmedFacts: string) => {
+      setRegenerateError("");
+      setIsRegenerating(true);
+      try {
+        const requestBody: Record<string, unknown> = {
+          resume: originalResume,
+          jobDescription,
+          generateCoverLetter: !!result?.coverLetter,
+          confirmedFacts,
+        };
+        if (llmKeywords) {
+          requestBody.targetKeywords = llmKeywords;
+        }
+
+        const response = await fetch("/api/tailor", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(requestBody),
+        });
+
+        const contentType = response.headers.get("content-type") || "";
+        const text = await response.text();
+
+        let data: TailorResult | null = null;
+        if (contentType.includes("application/json") && text) {
+          try {
+            data = JSON.parse(text);
+          } catch {
+            // JSON parsing failed
+          }
+        }
+
+        if (!response.ok || !data) {
+          setRegenerateError("Failed to regenerate. Please try again.");
+          return;
+        }
+
+        setResult(data);
+        setEditableSections(data.sections.map((s) => ({ ...s })));
+        setRejectedChangeIndices(new Set());
+        sessionStorage.setItem("tailorResult", JSON.stringify(data));
+
+        if (typeof data.jobTitle === "string" && data.jobTitle.trim()) {
+          setJobTitle(data.jobTitle.trim());
+        }
+        const info = data.personalInfo || {};
+        setPersonalInfo({
+          fullName: info.fullName || "",
+          email: info.email || "",
+          phone: info.phone || "",
+          location: info.location || "",
+          linkedin: info.linkedin || "",
+        });
+      } catch {
+        setRegenerateError("Network error — please check your connection and try again.");
+      } finally {
+        setIsRegenerating(false);
+      }
+    },
+    [originalResume, jobDescription, result, llmKeywords]
+  );
 
   useEffect(() => {
     if (editableSections.length === 0) return;
@@ -274,6 +375,40 @@ export default function ResultPage() {
             llmKeywords={llmKeywords}
             serverBeforeScore={result?.beforeScore}
             serverAfterScore={result?.afterScore}
+            missingKeywords={result?.missingKeywords}
+          />
+        </div>
+      )}
+
+      {/* Missing keywords review */}
+      {result.missingKeywords && result.missingKeywords.length > 0 && (
+        <div className="mb-6 sm:mb-8">
+          <div aria-live="polite">
+            {regenerateError && (
+              <div
+                role="alert"
+                className="mb-4 rounded-lg border border-error-border bg-error-bg px-4 py-3 text-sm text-error-text"
+              >
+                {regenerateError}
+              </div>
+            )}
+          </div>
+          <MissingKeywords
+            missingKeywords={result.missingKeywords}
+            onRegenerate={handleRegenerate}
+            isRegenerating={isRegenerating}
+          />
+        </div>
+      )}
+
+      {/* Changes diff */}
+      {result.changes && result.changes.length > 0 && (
+        <div className="mb-6 sm:mb-8">
+          <ChangesDiff
+            changes={result.changes}
+            onAccept={handleAcceptChange}
+            onReject={handleRejectChange}
+            rejectedIndices={rejectedChangeIndices}
           />
         </div>
       )}

@@ -258,8 +258,8 @@ describe("POST /api/tailor", () => {
     expect(fetchBody.messages).toHaveLength(2);
     expect(fetchBody.messages[0].role).toBe("system");
     expect(fetchBody.messages[1].role).toBe("user");
-    expect(fetchBody.temperature).toBe(0.7);
-    expect(fetchBody.top_p).toBe(0.9);
+    expect(fetchBody.temperature).toBe(0.2);
+    expect(fetchBody.top_p).toBe(1);
     expect(fetchBody.response_format).toEqual({ type: "json_object" });
   });
 
@@ -585,7 +585,7 @@ describe("POST /api/tailor", () => {
     expect(userText).toContain("react");
     expect(userText).toContain("typescript");
     expect(userText).toContain("ci/cd");
-    expect(userText).toMatch(/ATS keywords/i);
+    expect(userText).toMatch(/target_keywords/i);
   });
 
   it("does not include keyword section when targetKeywords is not provided", async () => {
@@ -600,7 +600,7 @@ describe("POST /api/tailor", () => {
 
     const fetchBody = JSON.parse(mockFetch.mock.calls[0][1].body);
     const userText = fetchBody.messages[1].content;
-    expect(userText).not.toMatch(/ATS keywords/i);
+    expect(userText).toMatch(/<target_keywords>\s*None/i);
   });
 
   it("does not include keyword section when targetKeywords is empty", async () => {
@@ -615,7 +615,7 @@ describe("POST /api/tailor", () => {
 
     const fetchBody = JSON.parse(mockFetch.mock.calls[0][1].body);
     const userText = fetchBody.messages[1].content;
-    expect(userText).not.toMatch(/ATS keywords/i);
+    expect(userText).toMatch(/<target_keywords>\s*None/i);
   });
 
   it("accepts request without targetKeywords (backwards compatible)", async () => {
@@ -640,6 +640,48 @@ describe("POST /api/tailor", () => {
   it("returns 400 when targetKeywords contains non-strings", async () => {
     const res = await POST(
       makeRequest({ ...validBody, targetKeywords: ["react", 123] })
+    );
+    expect(res.status).toBe(400);
+  });
+
+  // --- confirmedFacts support ---
+  it("includes confirmedFacts in user prompt when provided", async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify(validAzureResponse), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    const bodyWithFacts = {
+      ...validBody,
+      confirmedFacts: "- Automated testing: Yes, I used Jest and Playwright for all tests.",
+    };
+    await POST(makeRequest(bodyWithFacts));
+
+    const fetchBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+    const userText = fetchBody.messages[1].content;
+    expect(userText).toContain("Automated testing: Yes, I used Jest and Playwright for all tests.");
+  });
+
+  it("defaults confirmedFacts to None when absent", async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify(validAzureResponse), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    await POST(makeRequest(validBody));
+
+    const fetchBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+    const userText = fetchBody.messages[1].content;
+    expect(userText).toMatch(/<confirmed_facts>\s*None/i);
+  });
+
+  it("returns 400 when confirmedFacts is not a string", async () => {
+    const res = await POST(
+      makeRequest({ ...validBody, confirmedFacts: 123 })
     );
     expect(res.status).toBe(400);
   });

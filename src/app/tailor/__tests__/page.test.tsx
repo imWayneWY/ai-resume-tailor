@@ -362,10 +362,20 @@ describe("TailorPage", () => {
     // Keyword extraction returns keywords, then tailor succeeds
     mockFetch
       .mockResolvedValueOnce(
-        createMockResponse(JSON.stringify({ keywords: ["react", "typescript", "node.js"] }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        })
+        createMockResponse(
+          JSON.stringify({
+            keywords: [
+              { term: "react", category: "technical", required: true },
+              { term: "typescript", category: "technical", required: true },
+              { term: "node.js", category: "technical", required: false },
+              { term: "communication", category: "soft", required: false },
+            ],
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }
+        )
       )
       .mockResolvedValueOnce(
         createMockResponse(JSON.stringify(apiResponse), {
@@ -385,6 +395,7 @@ describe("TailorPage", () => {
       );
       const fetchBody = JSON.parse((mockFetch.mock.calls[tailorCallIdx][1] as { body: string }).body);
       expect(fetchBody.targetKeywords).toEqual(["react", "typescript", "node.js"]);
+      expect(fetchBody.targetKeywords).not.toContain("communication");
     });
   });
 

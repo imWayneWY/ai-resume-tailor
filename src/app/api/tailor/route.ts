@@ -4,6 +4,7 @@ import { extractKeywords, calculateMatchScore } from "@/lib/keyword-matcher";
 import { curveScore } from "@/lib/score-curve";
 import { createRateLimiter, getClientIp } from "@/lib/rate-limit";
 import { validateTailoredResume } from "@/lib/resume-validator";
+import { verifySupportedKeywords, type SupportedKeyword } from "@/lib/evidence-verifier";
 
 const rateLimiter = createRateLimiter({ limit: 20, windowMs: 60_000 });
 const globalLimiter = createRateLimiter({ limit: 50, windowMs: 60_000 });
@@ -26,12 +27,17 @@ A "fact" is: employer, title, dates, product, feature, technology, scope, number
 - Each JD term may appear at most 2 times in the whole resume.
 - Do not rewrite a bullet just to add a keyword. If a bullet is already clear and specific, return it unchanged.
 - JD terms the resume does not support go into "missingKeywords" with a short question for the candidate. They never go into the resume.
+- "missingKeywords" includes only technologies, tools, and domain areas, and at most 10 entries. Exclude soft skills and personality traits (e.g. "communication", "collaborative"), the job title itself, generic terms (e.g. "software development", "problem solving"), and any term the original resume already supports through a synonym or equivalent description.
 
 ## 3. Tailoring = selection and order
 - Keep every job and every bullet from the original (do not drop content).
 - Within each job, put the bullets most relevant to the JD first.
 - Reorder skills so the JD-relevant ones lead each line. Group skills by real category (Languages, Frontend, Backend & Cloud, Testing, Tools). Never create categories like "Concepts", "Core Competencies", or "Soft Skills".
+- Keep every skill listed in the original Skills section. You may regroup and reorder them into different categories, but never drop one.
 - The summary may emphasize the parts of the candidate's background most relevant to the JD.
+
+## 3b. Preserve specific details
+Preserve specific, concrete details from the original resume: product names (e.g. "Fantuan Reviews"), named features, browser/platform names (e.g. "Chrome, Safari, Firefox, and mobile browsers"), the audience/users affected, and scope words like "full" (e.g. "full codebase migration"). Only remove subjective adjectives and filler (e.g. "passionate", "world-class") — never remove a concrete noun, name, or scope word the original used.
 
 ## 4. Writing style
 Write like a senior engineer describing their own work: plain, specific, verifiable.
@@ -75,13 +81,17 @@ Return only JSON matching this shape:
   ],
   "missingKeywords": [
     { "term": string, "question": string }
+  ],
+  "supportedKeywords": [
+    { "term": string, "evidence": string }
   ]
 }
 - "personalInfo": extract fullName, email, phone, location, and linkedin from <original_resume> only — never from the job description. Omit any field that is not present in the resume. "location" is city/province/country only (no street address).
 - "jobTitle": the exact title stated in the job description. Omit this field entirely if the job description does not clearly state a title. Never guess or infer one.
 - Each section's "content" is plain text with newlines (no markdown lists). Experience entries use this exact format: "**Company Name** — Role Title (Date Range)" on its own line, followed by bullets that each start with "• ".
 - Omit the "coverLetter" field entirely unless a cover letter was requested. Never return it as null.
-- "changes" lists only lines you actually modified. "reason" is one short sentence.`;
+- "changes" lists only lines you actually modified. "reason" is one short sentence.
+- "supportedKeywords": for each JD term you judge the candidate already supports (used in the resume or implied by a clear synonym), include an entry with "evidence" set to an EXACT, VERBATIM quote copied character-for-character from <original_resume> that proves it. Do not paraphrase or summarize the evidence — copy the exact substring. If you cannot find an exact quote, omit that term from this list entirely (it is not evidence-backed).`;
 
 interface TailorRequest {
   resume: string;
@@ -176,6 +186,8 @@ interface MissingKeyword {
   question: string;
 }
 
+const MAX_MISSING_KEYWORDS = 10;
+
 interface ParsedResult {
   jobTitle?: string;
   personalInfo?: {
@@ -189,13 +201,16 @@ interface ParsedResult {
   coverLetter?: string;
   changes?: Change[];
   missingKeywords?: MissingKeyword[];
+  supportedKeywords?: SupportedKeyword[];
+  verifiedSupportedKeywords?: SupportedKeyword[];
 }
 
 async function callAzureOpenAI(
   endpoint: string,
   apiKey: string,
   deployment: string,
-  userPrompt: string
+  userPrompt: string,
+  originalResume: string
 ): Promise<NextResponse | ParsedResult> {
   const url = buildAzureUrl(endpoint, deployment);
 
@@ -241,10 +256,10 @@ async function callAzureOpenAI(
     );
   }
 
-  return parseAndValidateResponse(text);
+  return parseAndValidateResponse(text, originalResume);
 }
 
-function parseAndValidateResponse(text: string): NextResponse | ParsedResult {
+function parseAndValidateResponse(text: string, originalResume: string): NextResponse | ParsedResult {
   let parsed: ParsedResult;
   try {
     parsed = JSON.parse(text);
@@ -324,15 +339,33 @@ function parseAndValidateResponse(text: string): NextResponse | ParsedResult {
   }
 
   if (Array.isArray(parsed.missingKeywords)) {
-    parsed.missingKeywords = parsed.missingKeywords.filter(
-      (m): m is MissingKeyword =>
-        !!m &&
-        typeof m === "object" &&
-        typeof m.term === "string" &&
-        typeof m.question === "string"
-    );
+    parsed.missingKeywords = parsed.missingKeywords
+      .filter(
+        (m): m is MissingKeyword =>
+          !!m &&
+          typeof m === "object" &&
+          typeof m.term === "string" &&
+          typeof m.question === "string"
+      )
+      .slice(0, MAX_MISSING_KEYWORDS);
   } else {
     delete parsed.missingKeywords;
+  }
+
+  if (Array.isArray(parsed.supportedKeywords)) {
+    const validSupportedKeywords = parsed.supportedKeywords.filter(
+      (s): s is SupportedKeyword =>
+        !!s &&
+        typeof s === "object" &&
+        typeof s.term === "string" &&
+        typeof s.evidence === "string"
+    );
+    const { verified } = verifySupportedKeywords(originalResume, validSupportedKeywords);
+    parsed.supportedKeywords = verified;
+    parsed.verifiedSupportedKeywords = verified;
+  } else {
+    delete parsed.supportedKeywords;
+    parsed.verifiedSupportedKeywords = [];
   }
 
   return parsed;
@@ -455,7 +488,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const result = await callAzureOpenAI(endpoint, apiKey, deployment, userPrompt);
+    const result = await callAzureOpenAI(endpoint, apiKey, deployment, userPrompt, resume);
 
     if (result instanceof NextResponse) {
       return result;

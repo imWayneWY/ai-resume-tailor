@@ -830,4 +830,185 @@ describe("POST /api/tailor", () => {
     expect(json.personalInfo).toBeUndefined();
   });
 
+  // --- Detail-preservation prompt rules ---
+  describe("prompt detail-preservation rules", () => {
+    it("includes detail-preservation and skill-retention rules in the system prompt", async () => {
+      mockFetch.mockResolvedValueOnce(
+        new Response(JSON.stringify(validAzureResponse), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      );
+
+      await POST(makeRequest(validBody));
+
+      const fetchBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      const systemPrompt = fetchBody.messages[0].content;
+      expect(systemPrompt).toMatch(/preserve specific details/i);
+      expect(systemPrompt).toMatch(/fantuan reviews/i);
+      expect(systemPrompt).toMatch(/chrome, safari, firefox, and mobile browsers/i);
+      expect(systemPrompt).toMatch(/full codebase migration/i);
+      expect(systemPrompt).toMatch(/keep every skill listed in the original skills section/i);
+    });
+
+    it("does not strip concrete details like GraphQL and product names from the tailored output", async () => {
+      const resumeWithDetails = `Jane Doe
+Skills: JavaScript, TypeScript, GraphQL, React
+
+Experience
+**Acme Corp** — Senior Engineer (2020-2024)
+• Led full codebase migration for Fantuan Reviews, supporting Chrome, Safari, Firefox, and mobile browsers.`;
+
+      const responseWithDetails = {
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                sections: [
+                  { title: "Skills", content: "GraphQL, TypeScript, JavaScript, React" },
+                  {
+                    title: "Experience",
+                    content:
+                      "**Acme Corp** — Senior Engineer (2020-2024)\n• Led full codebase migration for Fantuan Reviews, supporting Chrome, Safari, Firefox, and mobile browsers.",
+                  },
+                ],
+              }),
+            },
+          },
+        ],
+      };
+
+      mockFetch.mockResolvedValueOnce(
+        new Response(JSON.stringify(responseWithDetails), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      );
+
+      const res = await POST(
+        makeRequest({ ...validBody, resume: resumeWithDetails })
+      );
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      const fullText = json.sections.map((s: { content: string }) => s.content).join("\n");
+      expect(fullText).toContain("GraphQL");
+      expect(fullText).toContain("Fantuan Reviews");
+      expect(fullText).toContain("Chrome, Safari, Firefox, and mobile browsers");
+      expect(fullText).toContain("full codebase migration");
+    });
+  });
+
+  // --- supportedKeywords validation / evidence verification ---
+  describe("supportedKeywords validation", () => {
+    const resumeText = "I built the Fantuan Reviews dashboard using GraphQL and React.";
+
+    it("drops malformed supportedKeywords entries without crashing", async () => {
+      const response = {
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                sections: [{ title: "Summary", content: "Engineer." }],
+                supportedKeywords: [
+                  { term: "GraphQL", evidence: "I built the Fantuan Reviews dashboard using GraphQL and React." },
+                  { term: "Missing evidence field" },
+                  { evidence: "Missing term field" },
+                  "not an object",
+                  null,
+                  42,
+                  { term: 123, evidence: 456 },
+                ],
+              }),
+            },
+          },
+        ],
+      };
+
+      mockFetch.mockResolvedValueOnce(
+        new Response(JSON.stringify(response), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      );
+
+      const res = await POST(makeRequest({ ...validBody, resume: resumeText }));
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.supportedKeywords).toEqual([
+        { term: "GraphQL", evidence: "I built the Fantuan Reviews dashboard using GraphQL and React." },
+      ]);
+      expect(json.verifiedSupportedKeywords).toEqual([
+        { term: "GraphQL", evidence: "I built the Fantuan Reviews dashboard using GraphQL and React." },
+      ]);
+    });
+
+    it("only includes verifiedSupportedKeywords whose evidence actually verifies against the original resume", async () => {
+      const response = {
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                sections: [{ title: "Summary", content: "Engineer." }],
+                supportedKeywords: [
+                  { term: "GraphQL", evidence: "I built the Fantuan Reviews dashboard using GraphQL and React." },
+                  { term: "Kubernetes", evidence: "Ran Kubernetes clusters in production." },
+                ],
+              }),
+            },
+          },
+        ],
+      };
+
+      mockFetch.mockResolvedValueOnce(
+        new Response(JSON.stringify(response), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      );
+
+      const res = await POST(makeRequest({ ...validBody, resume: resumeText }));
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.verifiedSupportedKeywords).toEqual([
+        { term: "GraphQL", evidence: "I built the Fantuan Reviews dashboard using GraphQL and React." },
+      ]);
+      expect(json.supportedKeywords).toHaveLength(1);
+      expect(json.supportedKeywords[0].term).toBe("GraphQL");
+    });
+  });
+
+  // --- missingKeywords cap ---
+  describe("missingKeywords cap", () => {
+    it("caps missingKeywords at 10 entries even if the model returns more", async () => {
+      const manyKeywords = Array.from({ length: 15 }, (_, i) => ({
+        term: `Keyword${i}`,
+        question: `Have you used Keyword${i}?`,
+      }));
+
+      const response = {
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                sections: [{ title: "Summary", content: "Engineer." }],
+                missingKeywords: manyKeywords,
+              }),
+            },
+          },
+        ],
+      };
+
+      mockFetch.mockResolvedValueOnce(
+        new Response(JSON.stringify(response), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      );
+
+      const res = await POST(makeRequest(validBody));
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.missingKeywords).toHaveLength(10);
+    });
+  });
 });

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import MatchScore from "@/components/MatchScore";
+import FitSummary, { type FitSummaryKeyword } from "@/components/FitSummary";
 import MissingKeywords, { type MissingKeywordItem, type ConfirmedFactEntry } from "@/components/MissingKeywords";
 import ChangesDiff, { type Change } from "@/components/ChangesDiff";
 
@@ -164,6 +164,8 @@ interface TailorResult {
   afterScore?: number;
   changes?: Change[];
   missingKeywords?: MissingKeywordItem[];
+  supportedKeywords?: { term: string; evidence: string }[];
+  verifiedSupportedKeywords?: { term: string; evidence: string }[];
   validation?: {
     bannedPhraseHits: { phrase: string; context: string }[];
     tackedOnClauseHits: { clause: string; context: string }[];
@@ -180,7 +182,7 @@ export default function ResultPage() {
   const [originalResume, setOriginalResume] = useState("");
   const [jobDescription, setJobDescription] = useState("");
   const [coverLetterExpanded, setCoverLetterExpanded] = useState(false);
-  const [llmKeywords, setLlmKeywords] = useState<string[] | undefined>(
+  const [llmKeywords, setLlmKeywords] = useState<FitSummaryKeyword[] | undefined>(
     undefined
   );
   const [personalInfo, setPersonalInfo] = useState<PersonalInfo>({
@@ -195,6 +197,10 @@ export default function ResultPage() {
   const [pdfGenerating, setPdfGenerating] = useState(false);
   const [pdfError, setPdfError] = useState("");
   const pdfGeneratingRef = useRef(false);
+  const missingKeywordsRef = useRef<HTMLDivElement>(null);
+  const scrollToMissingKeywords = useCallback(() => {
+    missingKeywordsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [regenerateError, setRegenerateError] = useState("");
   const [rejectedChangeIndices, setRejectedChangeIndices] = useState<Set<number>>(new Set());
@@ -251,7 +257,29 @@ export default function ResultPage() {
         try {
           const parsedKeywords = JSON.parse(storedKeywords);
           if (Array.isArray(parsedKeywords)) {
-            setLlmKeywords(parsedKeywords);
+            const normalized: FitSummaryKeyword[] = [];
+            for (const entry of parsedKeywords) {
+              if (typeof entry === "string") {
+                normalized.push({ term: entry, category: "domain", required: false });
+              } else if (
+                entry &&
+                typeof entry === "object" &&
+                typeof (entry as { term?: unknown }).term === "string"
+              ) {
+                const e = entry as { term: string; category?: unknown; required?: unknown };
+                const category =
+                  e.category === "technical" || e.category === "domain" || e.category === "soft"
+                    ? e.category
+                    : "domain";
+                normalized.push({
+                  term: e.term,
+                  category,
+                  required: e.required === true,
+                });
+              }
+              // anything else (malformed objects without a string term) is dropped
+            }
+            setLlmKeywords(normalized);
           }
         } catch {
           // Fall back to regex extraction
@@ -344,7 +372,9 @@ export default function ResultPage() {
           confirmedFacts,
         };
         if (llmKeywords) {
-          requestBody.targetKeywords = llmKeywords;
+          requestBody.targetKeywords = llmKeywords
+            .filter((k) => k.category !== "soft")
+            .map((k) => k.term);
         }
 
         const response = await fetch("/api/tailor", {
@@ -449,11 +479,6 @@ export default function ResultPage() {
     }
   };
 
-  const tailoredText = useMemo(
-    () => editableSections.map((s) => s.content).join("\n"),
-    [editableSections]
-  );
-
   if (!result) {
     return (
       <main className="mx-auto max-w-5xl px-4 py-16 sm:px-6">
@@ -516,25 +541,24 @@ export default function ResultPage() {
         )}
       </div>
 
-      {/* Match Score */}
+      {/* Fit summary */}
       {originalResume && jobDescription && (
         <div className="mb-6 sm:mb-8">
-          <MatchScore
+          <FitSummary
             originalResume={originalResume}
-            tailoredResume={tailoredText}
             jobDescription={jobDescription}
             llmKeywords={llmKeywords}
-            serverBeforeScore={result?.beforeScore}
-            serverAfterScore={result?.afterScore}
+            verifiedSupportedKeywords={result?.verifiedSupportedKeywords}
             missingKeywords={result?.missingKeywords}
             confirmedKeywords={confirmedKeywords}
+            onReviewTerm={scrollToMissingKeywords}
           />
         </div>
       )}
 
       {/* Missing keywords review */}
       {result.missingKeywords && result.missingKeywords.length > 0 && (
-        <div className="mb-6 sm:mb-8">
+        <div className="mb-6 sm:mb-8" ref={missingKeywordsRef}>
           <div aria-live="polite">
             {regenerateError && (
               <div

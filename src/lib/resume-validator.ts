@@ -72,29 +72,54 @@ export interface ResumeValidationResult {
  * Headings are recognized loosely: a short line (<=40 chars) that doesn't
  * end in punctuation, optionally followed by a blank line.
  */
+const SKILLS_HEADING_RE = /^#{0,3}\s*(skills|technical skills|technologies|tech stack|core competencies)\s*:?\s*(.*)$/i;
+
+const SECTION_HEADING_TERMS = [
+  "experience",
+  "work experience",
+  "work history",
+  "education",
+  "projects",
+  "certifications",
+  "summary",
+  "profile",
+  "awards",
+  "publications",
+  "volunteer",
+  "volunteering",
+  "languages",
+  "interests",
+  "references",
+  "objective",
+];
+
+function isSectionHeadingLine(trimmed: string): boolean {
+  const withoutColon = trimmed.replace(/:\s*$/, "").trim();
+  return SECTION_HEADING_TERMS.some(
+    (term) => withoutColon.toLowerCase() === term.toLowerCase()
+  );
+}
+
 function extractSkillsSectionFromRawText(text: string): string {
   const lines = text.split(/\r?\n/);
   let start = -1;
+  let inlineContent = "";
   for (let i = 0; i < lines.length; i++) {
-    if (/^\s*#{0,3}\s*skills\b/i.test(lines[i].trim())) {
+    const match = SKILLS_HEADING_RE.exec(lines[i].trim());
+    if (match) {
       start = i + 1;
+      inlineContent = match[2]?.trim() ?? "";
       break;
     }
   }
   if (start === -1) return "";
 
-  const HEADING_RE = /^[A-Za-z][A-Za-z &/]{0,39}$/;
   const bodyLines: string[] = [];
+  if (inlineContent) bodyLines.push(inlineContent);
   for (let i = start; i < lines.length; i++) {
     const line = lines[i];
     const trimmed = line.trim();
-    if (
-      trimmed.length > 0 &&
-      HEADING_RE.test(trimmed) &&
-      !/[,.;:|•]/.test(trimmed) &&
-      trimmed.split(/\s+/).length <= 5 &&
-      i > start
-    ) {
+    if (trimmed.length > 0 && isSectionHeadingLine(trimmed)) {
       // Looks like the start of the next section heading.
       break;
     }
@@ -120,11 +145,11 @@ function parseSkillItems(skillsContent: string): string[] {
   return items;
 }
 
-/** Returns true if `item` appears, case-insensitive & word-boundary matched, in `text`. */
+/** Returns true if `item` appears, case-insensitive & boundary matched, in `text`. */
 function containsWordBoundary(text: string, item: string): boolean {
   const escaped = escapeRegExp(item.trim());
   if (!escaped) return false;
-  const pattern = new RegExp(`\\b${escaped}\\b`, "i");
+  const pattern = new RegExp(`(?<![A-Za-z0-9])${escaped}(?![A-Za-z0-9])`, "i");
   return pattern.test(text);
 }
 
@@ -268,6 +293,7 @@ export function flagLargeDeletion(original: string, revised: string): boolean {
   const trimmedOriginal = (original ?? "").trim();
   const trimmedRevised = (revised ?? "").trim();
   if (trimmedOriginal.length === 0) return false;
+  if (trimmedRevised.length === 0) return true;
 
   // Only apply the percentage-shrinkage heuristic to originals long enough
   // that a 30%+ drop is meaningful — trimming a short adjective phrase

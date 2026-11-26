@@ -177,6 +177,53 @@ describe("validateTailoredResume", () => {
     const result = validateTailoredResume(originalWithSkills, tailored, []);
     expect(result.droppedSkills).toEqual([]);
   });
+
+  it("does not flag skills with punctuation (C#, C++, .NET, Node.js) as dropped when present", () => {
+    const originalWithSkills =
+      "Summary\nBuilt things.\n\nSkills\nLanguages: C#, C++, .NET, Node.js";
+    const tailored = [
+      { title: "Skills", content: "Languages: C#, C++, .NET, Node.js" },
+    ];
+    const result = validateTailoredResume(originalWithSkills, tailored, []);
+    expect(result.droppedSkills).toEqual([]);
+  });
+
+  it("flags C# as dropped when removed from the tailored Skills section", () => {
+    const originalWithSkills =
+      "Summary\nBuilt things.\n\nSkills\nLanguages: C#, C++, .NET, Node.js";
+    const tailored = [
+      { title: "Skills", content: "Languages: C++, .NET, Node.js" },
+    ];
+    const result = validateTailoredResume(originalWithSkills, tailored, []);
+    expect(result.droppedSkills).toContain("C#");
+  });
+
+  it("does not cut the Skills section short on a single-item line like 'Azure'", () => {
+    const originalWithSkills =
+      "Summary\nBuilt things.\n\nSkills\nAzure\nDocker, Git\n\nExperience\nDid stuff.";
+    const tailored = [{ title: "Skills", content: "Azure, Docker, Git" }];
+    const result = validateTailoredResume(originalWithSkills, tailored, []);
+    expect(result.droppedSkills).toEqual([]);
+  });
+
+  it("captures same-line 'Skills: React, TypeScript' heading content", () => {
+    const originalWithSkills = "Summary\nBuilt things.\n\nSkills: React, TypeScript\n\nExperience\nDid stuff.";
+    const tailored = [{ title: "Skills", content: "React, TypeScript" }];
+    const result = validateTailoredResume(originalWithSkills, tailored, []);
+    expect(result.droppedSkills).toEqual([]);
+  });
+
+  it("recognizes 'Technical Skills' and 'Technologies' as valid Skills headings", () => {
+    const originalTechnicalSkills = "Summary\nBuilt things.\n\nTechnical Skills\nReact, TypeScript\n\nExperience\nDid stuff.";
+    const tailoredTechnical = [{ title: "Skills", content: "React, TypeScript" }];
+    const resultTechnical = validateTailoredResume(originalTechnicalSkills, tailoredTechnical, []);
+    expect(resultTechnical.droppedSkills).toEqual([]);
+
+    const originalTechnologies = "Summary\nBuilt things.\n\nTechnologies\nReact, TypeScript\n\nExperience\nDid stuff.";
+    const tailoredTechnologies = [{ title: "Skills", content: "React, TypeScript" }];
+    const resultTechnologies = validateTailoredResume(originalTechnologies, tailoredTechnologies, []);
+    expect(resultTechnologies.droppedSkills).toEqual([]);
+  });
 });
 
 describe("flagLargeDeletion", () => {
@@ -192,5 +239,11 @@ describe("flagLargeDeletion", () => {
     const original = "Built high-impact features for the team.";
     const revised = "Built features for the team.";
     expect(flagLargeDeletion(original, revised)).toBe(false);
+  });
+
+  it("always flags when a short bullet is fully emptied", () => {
+    const original = "Led onboarding.";
+    const revised = "";
+    expect(flagLargeDeletion(original, revised)).toBe(true);
   });
 });

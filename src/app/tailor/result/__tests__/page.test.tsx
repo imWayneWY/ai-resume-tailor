@@ -118,6 +118,29 @@ describe("ResultPage", () => {
     expect(screen.getByText("Fit summary")).toBeInTheDocument();
   });
 
+  it("renders without throwing when stored validation is missing droppedSkills (legacy result)", () => {
+    sessionStore.tailorResult = JSON.stringify({
+      ...validResult,
+      validation: {
+        bannedPhraseHits: [],
+        tackedOnClauseHits: [],
+        overusedKeywords: [],
+        newNumbers: [],
+        newProperNouns: [],
+        // droppedSkills intentionally omitted (legacy stored result)
+      },
+    });
+    expect(() => render(<ResultPage />)).not.toThrow();
+  });
+
+  it("renders without throwing when stored validation is missing multiple array fields", () => {
+    sessionStore.tailorResult = JSON.stringify({
+      ...validResult,
+      validation: {},
+    });
+    expect(() => render(<ResultPage />)).not.toThrow();
+  });
+
   it("renders section content in preview and edit", () => {
     sessionStore.tailorResult = JSON.stringify(validResult);
     render(<ResultPage />);

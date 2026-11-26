@@ -196,6 +196,20 @@ interface TailorResult {
   };
 }
 
+function normalizeValidation(
+  validation: TailorResult["validation"]
+): TailorResult["validation"] {
+  if (!validation) return validation;
+  return {
+    bannedPhraseHits: Array.isArray(validation.bannedPhraseHits) ? validation.bannedPhraseHits : [],
+    tackedOnClauseHits: Array.isArray(validation.tackedOnClauseHits) ? validation.tackedOnClauseHits : [],
+    overusedKeywords: Array.isArray(validation.overusedKeywords) ? validation.overusedKeywords : [],
+    newNumbers: Array.isArray(validation.newNumbers) ? validation.newNumbers : [],
+    newProperNouns: Array.isArray(validation.newProperNouns) ? validation.newProperNouns : [],
+    droppedSkills: Array.isArray(validation.droppedSkills) ? validation.droppedSkills : [],
+  };
+}
+
 export default function ResultPage() {
   const router = useRouter();
   const [result, setResult] = useState<TailorResult | null>(null);
@@ -255,6 +269,7 @@ export default function ResultPage() {
         router.replace("/tailor");
         return;
       }
+      parsed.validation = normalizeValidation(parsed.validation);
       setResult(parsed);
       setEditableSections(parsed.sections.map((s) => ({ ...s })));
       setOriginalResume(sessionStorage.getItem("tailorOriginalResume") || "");
@@ -421,6 +436,7 @@ export default function ResultPage() {
           return;
         }
 
+        data.validation = normalizeValidation(data.validation);
         setResult(data);
         setEditableSections(data.sections.map((s) => ({ ...s })));
         setRejectedChangeIndices(new Set());

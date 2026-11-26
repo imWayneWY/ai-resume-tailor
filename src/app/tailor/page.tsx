@@ -3,6 +3,7 @@
 import type React from "react";
 import { useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
+import type { KeywordItem } from "@/app/api/extract-keywords/route";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
@@ -136,19 +137,19 @@ export default function TailorPage() {
           if (!res.ok) return null;
           const data = await res.json();
           return Array.isArray(data?.keywords) && data.keywords.length > 0
-            ? data.keywords as string[]
+            ? data.keywords as KeywordItem[]
             : null;
         })
         .catch(() => null);
 
-      const tailorPromise = async (keywords: string[] | null) => {
+      const tailorPromise = async (keywords: KeywordItem[] | null) => {
         const requestBody: Record<string, unknown> = {
           resume,
           jobDescription,
           generateCoverLetter,
         };
         if (keywords) {
-          requestBody.targetKeywords = keywords;
+          requestBody.targetKeywords = keywords.map((k) => k.term);
         }
 
         const tailorResponse = await fetch("/api/tailor", {

@@ -38,7 +38,12 @@ const validAzureResponse = {
     {
       message: {
         content: JSON.stringify({
-          keywords: ["aws", "node.js", "react", "typescript"],
+          keywords: [
+            { term: "AWS", category: "technical", required: true },
+            { term: "Node.js", category: "technical", required: true },
+            { term: "React", category: "technical", required: true },
+            { term: "TypeScript", category: "technical", required: true },
+          ],
         }),
       },
     },
@@ -189,7 +194,7 @@ describe("POST /api/extract-keywords", () => {
   // ---------- success ----------
 
   describe("successful extraction", () => {
-    it("returns sorted, deduplicated, lowercase keywords", async () => {
+    it("returns sorted, deduplicated keywords with category/required metadata", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -198,7 +203,13 @@ describe("POST /api/extract-keywords", () => {
             {
               message: {
                 content: JSON.stringify({
-                  keywords: ["React", "TYPESCRIPT", "react", "Node.js", "AWS"],
+                  keywords: [
+                    { term: "React", category: "technical", required: true },
+                    { term: "TYPESCRIPT", category: "technical", required: true },
+                    { term: "react", category: "technical", required: false },
+                    { term: "Node.js", category: "technical", required: false },
+                    { term: "AWS", category: "technical", required: true },
+                  ],
                 }),
               },
             },
@@ -209,7 +220,12 @@ describe("POST /api/extract-keywords", () => {
       const res = await POST(makeRequest(validBody));
       expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body.keywords).toEqual(["aws", "node.js", "react", "typescript"]);
+      expect(body.keywords).toEqual([
+        { term: "AWS", category: "technical", required: true },
+        { term: "Node.js", category: "technical", required: false },
+        { term: "React", category: "technical", required: true },
+        { term: "TYPESCRIPT", category: "technical", required: true },
+      ]);
     });
 
     it("filters out empty strings", async () => {
@@ -221,7 +237,12 @@ describe("POST /api/extract-keywords", () => {
             {
               message: {
                 content: JSON.stringify({
-                  keywords: ["react", "", "  ", "typescript"],
+                  keywords: [
+                    { term: "react", category: "technical", required: true },
+                    { term: "", category: "technical", required: true },
+                    { term: "  ", category: "technical", required: true },
+                    { term: "typescript", category: "technical", required: true },
+                  ],
                 }),
               },
             },
@@ -231,10 +252,10 @@ describe("POST /api/extract-keywords", () => {
 
       const res = await POST(makeRequest(validBody));
       const body = await res.json();
-      expect(body.keywords).toEqual(["react", "typescript"]);
+      expect(body.keywords.map((k: { term: string }) => k.term)).toEqual(["react", "typescript"]);
     });
 
-    it("handles non-string entries gracefully", async () => {
+    it("handles non-object/malformed entries gracefully", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -243,7 +264,13 @@ describe("POST /api/extract-keywords", () => {
             {
               message: {
                 content: JSON.stringify({
-                  keywords: ["react", 123, null, "typescript"],
+                  keywords: [
+                    { term: "react", category: "technical", required: true },
+                    123,
+                    null,
+                    { term: "typescript", category: "technical", required: true },
+                    { category: "technical", required: true },
+                  ],
                 }),
               },
             },
@@ -253,7 +280,31 @@ describe("POST /api/extract-keywords", () => {
 
       const res = await POST(makeRequest(validBody));
       const body = await res.json();
-      expect(body.keywords).toEqual(["react", "typescript"]);
+      expect(body.keywords.map((k: { term: string }) => k.term)).toEqual(["react", "typescript"]);
+    });
+
+    it("defaults an invalid category to 'domain' and a missing required to false", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  keywords: [{ term: "federated login", category: "bogus" }],
+                }),
+              },
+            },
+          ],
+        }),
+      });
+
+      const res = await POST(makeRequest(validBody));
+      const body = await res.json();
+      expect(body.keywords).toEqual([
+        { term: "federated login", category: "domain", required: false },
+      ]);
     });
   });
 

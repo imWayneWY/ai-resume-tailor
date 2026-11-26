@@ -147,6 +147,18 @@ export function validateTailoredResume(
     const precedingText = tailoredText.slice(0, nounMatch.index);
     const atSentenceStart = SENTENCE_START_BOUNDARY_RE.test(precedingText) || nounMatch.index === 0;
     if (atSentenceStart) continue;
+    // Skip category labels on Skills lines, e.g. "Backend & Cloud: AWS, Docker"
+    // — if the word sits immediately before a colon (ignoring trailing
+    // whitespace), and everything from the start of the line up to and
+    // including that colon looks like a short label (letters/spaces/&//),
+    // treat it as a category heading, not a fabricated fact.
+    const lineStart = precedingText.lastIndexOf("\n") + 1;
+    const afterWord = tailoredText.slice(nounMatch.index + word.length);
+    const immediatelyBeforeColon = /^\s*:/.test(afterWord);
+    const labelSegment = tailoredText.slice(lineStart, nounMatch.index + word.length);
+    const isLabelBeforeColon =
+      immediatelyBeforeColon && /^[A-Za-z &/]+$/.test(labelSegment.trim());
+    if (isLabelBeforeColon) continue;
     const lowerWord = word.toLowerCase();
     if (lowerOriginal.includes(lowerWord)) continue;
     if (seen.has(word)) continue;

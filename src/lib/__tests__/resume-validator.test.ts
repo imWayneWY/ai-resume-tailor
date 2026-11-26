@@ -140,4 +140,21 @@ describe("validateTailoredResume", () => {
     const result = validateTailoredResume(original, tailored, ["Playwright"]);
     expect(result.overusedKeywords).toEqual([]);
   });
+
+  it("does not flag a Skills category label before a colon as a new proper noun, but still flags a genuinely new/fabricated proper noun elsewhere", () => {
+    const tailored = [
+      {
+        title: "Skills",
+        content: "Backend & Cloud: AWS, Docker",
+      },
+      {
+        title: "Experience",
+        content: "Deployed services using Snowflake for analytics.",
+      },
+    ];
+    const result = validateTailoredResume(original, tailored, []);
+    expect(result.newProperNouns).not.toContain("Cloud");
+    expect(result.newProperNouns).not.toContain("Backend");
+    expect(result.newProperNouns).toContain("Snowflake");
+  });
 });

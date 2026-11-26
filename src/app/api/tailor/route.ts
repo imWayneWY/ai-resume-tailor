@@ -3,6 +3,7 @@ import { cleanSections, cleanAiPhrases } from "@/lib/ai-phrase-cleaner";
 import { extractKeywords, calculateMatchScore } from "@/lib/keyword-matcher";
 import { curveScore } from "@/lib/score-curve";
 import { createRateLimiter, getClientIp } from "@/lib/rate-limit";
+import { validateTailoredResume } from "@/lib/resume-validator";
 
 const rateLimiter = createRateLimiter({ limit: 20, windowMs: 60_000 });
 const globalLimiter = createRateLimiter({ limit: 50, windowMs: 60_000 });
@@ -12,107 +13,82 @@ const API_VERSION = "2025-01-01-preview";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const SYSTEM_PROMPT = `You are an expert resume writer and ATS (Applicant Tracking System) optimizer. Your job is to deeply tailor a candidate's master resume to a specific job description.
+const SYSTEM_PROMPT = `You are a resume editor. Your job is to make an existing resume easier for a recruiter at the target company to say yes to, without changing what the candidate actually did.
 
-## Core Principle
-Every section of the resume must be actively tailored — not just the summary. A good tailoring should make someone reading the resume think "this person was made for this role."
+## 1. Facts come only from the candidate
+A "fact" is: employer, title, dates, product, feature, technology, scope, number, or level of responsibility (contributed / built / owned / led).
+- Use only facts present in <original_resume> or <confirmed_facts>.
+- Never add a fact, never upgrade one ("contributed" → "led", "worked on" → "owned"), and never generalize into a claim the original does not support (e.g. "ensured compliance", "protected sensitive data").
+- Never invent or estimate numbers. Keep numbers that already exist.
 
-## CRITICAL RULES
+## 2. Keywords: only where already true
+- You may use a term from the job description only if the original already supports it — the same skill, or a clear synonym (e.g. original says "Jest and Playwright", JD says "automated testing" → OK).
+- Each JD term may appear at most 2 times in the whole resume.
+- Do not rewrite a bullet just to add a keyword. If a bullet is already clear and specific, return it unchanged.
+- JD terms the resume does not support go into "missingKeywords" with a short question for the candidate. They never go into the resume.
 
-### Completeness — DO NOT TRUNCATE
-- You MUST include EVERY job/role from the original resume. Count them. If the original has 5 jobs, the output must have 5 jobs.
-- You MUST include ALL bullet points for each role — do not cut or drop any. You may rewrite, reorder, or condense wording, but every bullet must be represented.
-- Missing experience entries = failed output. This is the most important rule.
+## 3. Tailoring = selection and order
+- Keep every job and every bullet from the original (do not drop content).
+- Within each job, put the bullets most relevant to the JD first.
+- Reorder skills so the JD-relevant ones lead each line. Group skills by real category (Languages, Frontend, Backend & Cloud, Testing, Tools). Never create categories like "Concepts", "Core Competencies", or "Soft Skills".
+- The summary may emphasize the parts of the candidate's background most relevant to the JD.
 
-### Summary / Profile
-- Rewrite completely to address the specific role and company
-- Lead with the most relevant experience and skills for THIS job
-- Mirror the job's core requirements in the opening lines
-- Weave in 3-5 key technical terms from the JD naturally
+## 4. Writing style
+Write like a senior engineer describing their own work: plain, specific, verifiable.
+- Each bullet: what was built or done + how (technology/approach) + result or purpose, but include a result only if the original states one.
+- Max ~30 words per bullet. Start with a concrete verb (Built, Shipped, Migrated, Fixed, Designed). Use present tense for the current job, past tense for past jobs.
+- Do not end bullets with a tacked-on participle clause ("..., enhancing X", "..., ensuring Y", "..., driving Z").
+- Do not repeat the same noun phrase across bullets.
+- Banned words and phrases: passionate, accomplished, results-driven, self-directed, self-starter, dynamic, seasoned, spearheaded, leveraged, utilized, cutting-edge, robust, seamless, synergy, best practices, ensuring compliance, team player, strong communication skills, fast-paced environment.
 
-### Skills
-- Reorder skills so the most relevant ones for the JD appear first
-- Group skills to match the JD's categories when possible (e.g., if the JD lists "React, Node.js, TypeScript" prominently, lead with those)
-- Include relevant skills from the resume that match JD keywords, even if they were listed less prominently in the original
-- Do NOT add skills the candidate doesn't have
-- NEVER create catch-all or dump categories like "Concepts:", "Methodologies:", "Soft Skills:", or "Core Competencies:" to stuff in keywords. This is a keyword-stuffing anti-pattern that recruiters and ATS reviewers instantly recognize as AI-generated.
-- Only use skill categories that a real developer would write (e.g., "Languages:", "Frameworks:", "Tools:", "Databases:", "Cloud/DevOps:")
-- If a keyword is a soft skill or methodology (e.g., "cross-functional collaboration", "growth-minded"), it belongs in experience bullets or the summary — NOT in the Skills section
+## 5. Summary
+2–3 sentences, max 60 words.
+1. Role + years of experience + core stack.
+2. What the candidate does now, with concrete products/features.
+3. (Optional) One line of relevant earlier experience.
+No personality claims or soft-skill claims.
 
-### Experience — REWRITE EVERY BULLET
-- DO NOT copy bullets unchanged from the original resume. Every bullet should be actively rephrased.
-- For each bullet point, identify at least one keyword or phrase from the JD that relates to the work described, and weave it in naturally.
-- NEVER append JD keywords at the end of an existing bullet as a tacked-on phrase. This is the #1 mistake to avoid:
-  ✗ BAD: "Led codebase migration from JS to TS, reducing errors, with a focus on collaborative development and knowledge sharing"
-  ✗ BAD: "Built React components, leveraging cross-functional collaboration and driving engineering excellence"
-  ✗ BAD: "Implemented new features for the platform, contributing to scalable architecture and system reliability"
-  These all share the same anti-pattern: the original achievement is stated, then a comma or conjunction bolts on JD buzzwords that add no specific information.
-  ✓ GOOD: "Led collaborative migration of codebase from JavaScript to TypeScript across 3 teams, reducing runtime errors by 40%"
-  ✓ GOOD: "Partnered with design and product teams to build accessible React components, improving user engagement by 25%"
-  ✓ GOOD: "Architected scalable microservices handling 10K+ requests/sec, improving system reliability to 99.9% uptime"
-  In the good examples, keywords appear at the START or MIDDLE of the sentence as part of the core action — not tacked on at the end.
-- THE KEY TEST: Remove the last clause after the final comma. If the bullet still makes complete sense, you probably just appended keywords. Rewrite it so the keywords are structurally necessary.
-- Rewrite the entire sentence structure when needed to integrate keywords naturally. It should read like the candidate wrote it for this specific role.
-- Use the JD's exact terminology when the candidate has equivalent experience:
-  • JD says "CI/CD pipelines" and candidate "set up automated deployments" → write "Built CI/CD pipelines for automated deployments"
-  • JD says "cross-functional collaboration" and candidate "worked with designers" → write "Collaborated cross-functionally with design and product teams to deliver..."
-  • JD says "distributed systems" and candidate "built microservices" → write "Designed distributed systems using microservices architecture"
-- Quantify achievements where possible (numbers, percentages, metrics)
-- Reorder bullets within each role so the most JD-relevant ones come first
-- Keep all real positions — do NOT remove any jobs or bullet points
+## 6. Self-check before answering
+Before producing output, check every revised line:
+- Does every fact appear in the original or confirmed facts?
+- Is any JD term used more than twice?
+- Does any banned phrase or tacked-on clause appear?
+Fix any violation before output.
 
-### Education & Certifications
-- Keep as-is unless reordering adds relevance
-
-### Keyword Integration Strategy
-1. First, identify the top 10-15 technical keywords and phrases from the JD (technologies, methodologies, tools, domain terms)
-2. For each keyword, find the best place in the resume to naturally incorporate it
-3. Restructure the sentence so the keyword is integral to the meaning, not decorative
-4. Aim to mention each important JD keyword at least once across the entire resume
-5. Use exact JD phrasing, not synonyms — ATS systems match exact terms
-6. Never fabricate — only use a JD keyword if the candidate's actual experience supports it
-7. If a keyword cannot be naturally integrated, it is better to omit it than to force it in awkwardly
-8. NEVER dump unplaced keywords into a list or new section. There should be no "Concepts:", "Key Competencies:", or similar catch-all sections that did not exist in the original resume
-
-### General
-- Do NOT fabricate experience, skills, or achievements the candidate doesn't have
-- Keep the tone professional and concise
-- Optimize for ATS keyword scanning while remaining human-readable
-
-## Output Format
-Respond with ONLY valid JSON, no markdown fences:
+## 7. Output
+Return only JSON matching this shape:
 {
-  "jobTitle": "...",
+  "jobTitle": string,
   "personalInfo": {
-    "fullName": "...",
-    "email": "...",
-    "phone": "...",
-    "location": "...",
-    "linkedin": "..."
+    "fullName": string,
+    "email": string,
+    "phone": string,
+    "location": string,
+    "linkedin": string
   },
   "sections": [
-    { "title": "Summary", "content": "..." },
-    { "title": "Skills", "content": "..." },
-    { "title": "Experience", "content": "..." },
-    { "title": "Education", "content": "..." }
+    { "title": string, "content": string }
   ],
-  "coverLetter": "..." // only if requested
+  "coverLetter": string,
+  "changes": [
+    { "section": string, "original": string, "revised": string, "reason": string, "jdTermsUsed": string[] }
+  ],
+  "missingKeywords": [
+    { "term": string, "question": string }
+  ]
 }
-
-The "jobTitle" field should contain the exact job title extracted from the job description (e.g., "Senior Software Engineer", "Product Manager"). If no clear job title is stated in the job description, omit the "jobTitle" field entirely — do NOT guess or fabricate one.
-
-The "personalInfo" field should be extracted from the RESUME (not the job description). Extract the candidate's full name, email, phone number, city/province/country location (not full street address), and LinkedIn URL. Omit any field that is not clearly present in the resume. For location, use a clean format like "Langley, BC, Canada" — do not include street addresses or unit numbers.
-
-Include all relevant sections. The "content" field should use plain text with newlines for formatting. Use **bold** markers for emphasis (e.g., company names, role titles). For experience entries, use this format:
-**Company Name** — Role Title (Date Range)
-• Achievement or responsibility
-• Achievement or responsibility`;
+- "personalInfo": extract fullName, email, phone, location, and linkedin from <original_resume> only — never from the job description. Omit any field that is not present in the resume. "location" is city/province/country only (no street address).
+- "jobTitle": the exact title stated in the job description. Omit this field entirely if the job description does not clearly state a title. Never guess or infer one.
+- Each section's "content" is plain text with newlines (no markdown lists). Experience entries use this exact format: "**Company Name** — Role Title (Date Range)" on its own line, followed by bullets that each start with "• ".
+- Omit the "coverLetter" field entirely unless a cover letter was requested. Never return it as null.
+- "changes" lists only lines you actually modified. "reason" is one short sentence.`;
 
 interface TailorRequest {
   resume: string;
   jobDescription: string;
   generateCoverLetter: boolean;
   targetKeywords?: string[];
+  confirmedFacts?: string;
 }
 
 function validateRequest(
@@ -132,6 +108,10 @@ function validateRequest(
     if (!Array.isArray(b.targetKeywords)) return false;
     if (b.targetKeywords.some((k: unknown) => typeof k !== "string")) return false;
   }
+
+  if ("confirmedFacts" in b && b.confirmedFacts !== undefined) {
+    if (typeof b.confirmedFacts !== "string") return false;
+  }
   return true;
 }
 
@@ -139,32 +119,61 @@ function buildUserPrompt(
   resume: string,
   jobDescription: string,
   generateCoverLetter: boolean,
-  targetKeywords?: string[]
+  targetKeywords?: string[],
+  confirmedFacts?: string
 ): string {
-  const keywordSection = targetKeywords && targetKeywords.length > 0
-    ? `\n\nThe following ATS keywords were extracted from this job description. You MUST try to naturally incorporate as many of these as possible into the tailored resume (summary, skills, and experience bullets). Only use a keyword if the candidate's experience genuinely supports it:\n${targetKeywords.join(", ")}\n`
-    : "";
+  const keywords = targetKeywords && targetKeywords.length > 0
+    ? targetKeywords.join(", ")
+    : "None";
 
-  return `Here is the candidate's master resume:
+  const facts = confirmedFacts && confirmedFacts.trim().length > 0
+    ? confirmedFacts.trim()
+    : "None";
 
----
+  const coverLetterInstruction = generateCoverLetter
+    ? 'Cover letter: max 200 words, 3 short paragraphs, same fact rules as above, no opening line like "I am excited to apply".'
+    : "Do NOT include a coverLetter field in the output.";
+
+  return `<original_resume>
 ${resume}
----
+</original_resume>
 
-Here is the job description to tailor for:
-
----
+<job_description>
 ${jobDescription}
----
-${keywordSection}
-${generateCoverLetter ? "Please also generate a cover letter that addresses any skill gaps and highlights the candidate's strongest relevant qualifications." : "Do NOT include a coverLetter field in the output."}
+</job_description>
 
-Respond with ONLY the JSON object, no markdown fences or extra text.`;
+<confirmed_facts>
+${facts}
+</confirmed_facts>
+
+<target_keywords>
+${keywords}
+Use these only if the original resume or confirmed facts support them. Otherwise put them in missingKeywords.
+</target_keywords>
+
+Include cover letter: ${generateCoverLetter}
+
+${coverLetterInstruction}
+
+Return only the JSON object.`;
 }
 
 function buildAzureUrl(endpoint: string, deployment: string): string {
   const base = endpoint.replace(/\/+$/, "");
   return `${base}/openai/deployments/${encodeURIComponent(deployment)}/chat/completions?api-version=${API_VERSION}`;
+}
+
+interface Change {
+  section: string;
+  original: string;
+  revised: string;
+  reason: string;
+  jdTermsUsed: string[];
+}
+
+interface MissingKeyword {
+  term: string;
+  question: string;
 }
 
 interface ParsedResult {
@@ -178,6 +187,8 @@ interface ParsedResult {
   };
   sections: { title: string; content: string }[];
   coverLetter?: string;
+  changes?: Change[];
+  missingKeywords?: MissingKeyword[];
 }
 
 async function callAzureOpenAI(
@@ -199,8 +210,8 @@ async function callAzureOpenAI(
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: userPrompt },
       ],
-      temperature: 0.7,
-      top_p: 0.9,
+      temperature: 0.2,
+      top_p: 1,
       response_format: { type: "json_object" },
     }),
   });
@@ -289,6 +300,39 @@ function parseAndValidateResponse(text: string): NextResponse | ParsedResult {
   if (parsed.coverLetter) {
     const cleanedCoverLetter = cleanAiPhrases(parsed.coverLetter);
     parsed.coverLetter = cleanedCoverLetter.text;
+  }
+
+  if (Array.isArray(parsed.changes)) {
+    parsed.changes = parsed.changes
+      .filter(
+        (c): c is Change =>
+          !!c &&
+          typeof c === "object" &&
+          typeof c.section === "string" &&
+          typeof c.original === "string" &&
+          typeof c.revised === "string" &&
+          typeof c.reason === "string"
+      )
+      .map((c) => ({
+        ...c,
+        jdTermsUsed: Array.isArray(c.jdTermsUsed)
+          ? c.jdTermsUsed.filter((t): t is string => typeof t === "string")
+          : [],
+      }));
+  } else {
+    delete parsed.changes;
+  }
+
+  if (Array.isArray(parsed.missingKeywords)) {
+    parsed.missingKeywords = parsed.missingKeywords.filter(
+      (m): m is MissingKeyword =>
+        !!m &&
+        typeof m === "object" &&
+        typeof m.term === "string" &&
+        typeof m.question === "string"
+    );
+  } else {
+    delete parsed.missingKeywords;
   }
 
   return parsed;
@@ -399,8 +443,8 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { resume, jobDescription, generateCoverLetter, targetKeywords } = body;
-  const userPrompt = buildUserPrompt(resume, jobDescription, generateCoverLetter, targetKeywords);
+  const { resume, jobDescription, generateCoverLetter, targetKeywords, confirmedFacts } = body;
+  const userPrompt = buildUserPrompt(resume, jobDescription, generateCoverLetter, targetKeywords, confirmedFacts);
 
   const rateLimitResult = rateLimiter.check(clientIp);
   if (!rateLimitResult.allowed) {
@@ -420,7 +464,20 @@ export async function POST(request: NextRequest) {
     // Scoring is a nice-to-have: never fail a successful tailoring because of it.
     const scores = computeScores(result, resume, jobDescription, targetKeywords);
 
-    return NextResponse.json({ ...result, ...scores });
+    let validation;
+    try {
+      const cleanedKeywords = Array.isArray(targetKeywords)
+        ? targetKeywords.filter((k): k is string => typeof k === "string")
+        : Array.from(extractKeywords(jobDescription));
+      validation = validateTailoredResume(resume, result.sections, cleanedKeywords);
+    } catch (err) {
+      console.debug(
+        "[api/tailor] validation computation failed, omitting validation field",
+        err instanceof Error ? `${err.name}: ${err.message}` : String(err)
+      );
+    }
+
+    return NextResponse.json({ ...result, ...scores, validation });
   } catch (err) {
     console.debug(
       "[api/tailor] unhandled failure",

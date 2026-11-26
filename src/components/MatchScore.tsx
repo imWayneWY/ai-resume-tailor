@@ -14,6 +14,10 @@ interface MatchScoreProps {
   serverBeforeScore?: number;
   /** Server-computed after score (0-100), used when available. */
   serverAfterScore?: number;
+  /** JD terms the AI flagged as unsupported by the original resume/confirmed facts. */
+  missingKeywords?: { term: string; question: string }[];
+  /** JD terms the candidate has confirmed they actually have experience with. */
+  confirmedKeywords?: string[];
 }
 
 function ScoreCircle({
@@ -80,6 +84,13 @@ function ScoreCircle({
   );
 }
 
+function normalizeTerm(term: string): string {
+  return term
+    .toLowerCase()
+    .trim()
+    .replace(/[\s/-]+/g, " ");
+}
+
 export default function MatchScore({
   originalResume,
   tailoredResume,
@@ -87,6 +98,8 @@ export default function MatchScore({
   llmKeywords,
   serverBeforeScore,
   serverAfterScore,
+  missingKeywords,
+  confirmedKeywords,
 }: MatchScoreProps) {
   // Use LLM-extracted keywords if available, otherwise fall back to regex
   const jdKeywords = useMemo(() => {
@@ -106,8 +119,8 @@ export default function MatchScore({
   );
 
   const afterScore = useMemo(
-    () => hasServerScores ? null : calculateMatchScore(tailoredResume, jdKeywords),
-    [tailoredResume, jdKeywords, hasServerScores]
+    () => calculateMatchScore(tailoredResume, jdKeywords),
+    [tailoredResume, jdKeywords]
   );
 
   const usingLlm = !!(llmKeywords && llmKeywords.length > 0);
@@ -117,25 +130,64 @@ export default function MatchScore({
   // Server scores arrive pre-curved from /api/tailor (raw scores are only stored in DB).
   // Client-side fallback computes raw percentage then curves it here.
   const beforeScoreNum = hasServerScores ? serverBeforeScore! : curveScore(totalKw > 0 && beforeScore ? Math.round((beforeScore.matchCount / totalKw) * 100) : 0);
-  const afterScoreNum = hasServerScores ? serverAfterScore! : curveScore(totalKw > 0 && afterScore ? Math.round((afterScore.matchCount / totalKw) * 100) : 0);
-  const scoreImprovement = afterScoreNum - beforeScoreNum;
+
+  // "Backed coverage": JD keywords matched in the ORIGINAL resume (facts the
+  // candidate already demonstrably has), plus keywords the candidate has
+  // since confirmed via the Missing Keywords flow — divided by the total
+  // number of JD keywords. This does not depend on the model reporting
+  // itself honestly, and it is not a measurement of the tailored text.
+  const jdKeywordsNormalized = useMemo(
+    () => new Set(Array.from(jdKeywords).map(normalizeTerm)),
+    [jdKeywords]
+  );
+
+  const confirmedSet = useMemo(() => {
+    const set = new Set<string>();
+    for (const term of confirmedKeywords || []) {
+      if (!term) continue;
+      const normalized = normalizeTerm(term);
+      if (jdKeywordsNormalized.has(normalized)) {
+        set.add(normalized);
+      }
+    }
+    return set;
+  }, [confirmedKeywords, jdKeywordsNormalized]);
+
+  const originalMatchedScore = useMemo(
+    () => calculateMatchScore(originalResume, jdKeywords),
+    [originalResume, jdKeywords]
+  );
+
+  const backedCoverageNum = useMemo(() => {
+    if (totalKw === 0) return 0;
+    const backed = new Set<string>();
+    for (const matched of originalMatchedScore.matchedKeywords) {
+      backed.add(normalizeTerm(matched));
+    }
+    for (const term of confirmedSet) {
+      backed.add(term);
+    }
+    return curveScore(Math.min(100, Math.round((backed.size / totalKw) * 100)));
+  }, [originalMatchedScore, confirmedSet, totalKw]);
+
+  const afterScoreNum = backedCoverageNum;
 
   // Log keywords to browser console for inspection (only when doing client-side scoring)
   useEffect(() => {
     if (hasServerScores) {
       console.debug(`[MatchScore] Using server-computed scores (before=${serverBeforeScore}, after=${serverAfterScore})`);
-      return;
+    } else {
+      console.debug(
+        `[MatchScore] Using ${usingLlm ? "LLM" : "regex"}-extracted keywords (${jdKeywords.size} total)`
+      );
     }
-    console.debug(
-      `[MatchScore] Using ${usingLlm ? "LLM" : "regex"}-extracted keywords (${jdKeywords.size} total)`
-    );
-    if (afterScore && afterScore.matchedKeywords.length > 0) {
+    if (afterScore.matchedKeywords.length > 0) {
       console.debug(
         "[MatchScore] Matched keywords:",
         afterScore.matchedKeywords.join(", ")
       );
     }
-    if (afterScore && afterScore.missedKeywords.length > 0) {
+    if (afterScore.missedKeywords.length > 0) {
       console.debug(
         "[MatchScore] Unmatched keywords:",
         afterScore.missedKeywords.join(", ")
@@ -143,20 +195,30 @@ export default function MatchScore({
     }
   }, [afterScore, hasServerScores, serverBeforeScore, serverAfterScore, jdKeywords.size, usingLlm]);
 
+  // Suppress unused-var lint for missingKeywords — kept in the prop list for
+  // API compatibility with callers that still pass it, even though scoring
+  // no longer depends on it directly.
+  void missingKeywords;
+
   return (
     <div className="rounded-lg border border-border bg-card p-4 shadow-sm sm:p-6">
-      <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-muted">
-        JD Match Score
+      <h2 className="mb-1 text-sm font-medium uppercase tracking-wide text-muted">
+        Keyword coverage backed by real experience
       </h2>
+      <p className="mb-4 text-xs text-muted">
+        &quot;Before&quot; is the raw JD match score for context. &quot;After&quot; measures JD
+        keywords backed by your original resume or facts you&apos;ve confirmed —
+        these two scores use different methods and are not directly comparable.
+      </p>
 
       {/* Score circles */}
       <div className="flex items-center justify-center gap-6 sm:gap-8">
         <ScoreCircle
           score={beforeScoreNum}
-          label="Before"
+          label="Before (raw match)"
         />
 
-        {/* Arrow with improvement */}
+        {/* Arrow (no numeric improvement indicator — before/after use different scoring methods) */}
         <div className="flex flex-col items-center gap-1">
           <svg
             className="h-6 w-6 text-muted"
@@ -172,16 +234,11 @@ export default function MatchScore({
               d="M13 7l5 5m0 0l-5 5m5-5H6"
             />
           </svg>
-          {scoreImprovement > 0 && (
-            <span className="text-xs font-semibold text-success-text">
-              +{scoreImprovement}
-            </span>
-          )}
         </div>
 
         <ScoreCircle
           score={afterScoreNum}
-          label="After"
+          label="After (backed)"
         />
       </div>
 

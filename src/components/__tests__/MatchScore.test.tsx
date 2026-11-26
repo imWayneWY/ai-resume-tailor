@@ -1,6 +1,7 @@
 import React from "react";
 import { render, screen } from "@testing-library/react";
 import MatchScore from "@/components/MatchScore";
+import { curveScore } from "@/lib/score-curve";
 
 describe("MatchScore", () => {
   const defaultProps = {
@@ -11,15 +12,17 @@ describe("MatchScore", () => {
       "We need a developer with React, TypeScript, Node.js, and Python experience",
   };
 
-  it("renders the JD Match Score heading", () => {
+  it("renders the keyword coverage heading", () => {
     render(<MatchScore {...defaultProps} />);
-    expect(screen.getByText("JD Match Score")).toBeInTheDocument();
+    expect(
+      screen.getByText("Keyword coverage backed by real experience")
+    ).toBeInTheDocument();
   });
 
   it("renders Before and After labels", () => {
     render(<MatchScore {...defaultProps} />);
-    expect(screen.getByText("Before")).toBeInTheDocument();
-    expect(screen.getByText("After")).toBeInTheDocument();
+    expect(screen.getAllByText(/Before/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/After/).length).toBeGreaterThan(0);
   });
 
   it("renders 0-100 score values (not raw counts or percentages)", () => {
@@ -67,10 +70,12 @@ describe("MatchScore", () => {
         jobDescription=""
       />
     );
-    expect(screen.getByText("JD Match Score")).toBeInTheDocument();
+    expect(
+      screen.getByText("Keyword coverage backed by real experience")
+    ).toBeInTheDocument();
   });
 
-  it("shows improvement indicator when after score is higher", () => {
+  it("does not show an improvement indicator (before/after use different scoring methods)", () => {
     const propsWithGuaranteedImprovement = {
       originalResume: "React",
       tailoredResume: "React TypeScript Node.js Python",
@@ -79,9 +84,9 @@ describe("MatchScore", () => {
 
     render(<MatchScore {...propsWithGuaranteedImprovement} />);
 
-    // Improvement shows as "+N" (raw number, not percentage)
-    const improvement = screen.getByText(/^\+\d+$/);
-    expect(improvement).toBeInTheDocument();
+    // No "+N" improvement indicator is rendered anymore.
+    const improvement = screen.queryByText(/^\+\d+$/);
+    expect(improvement).not.toBeInTheDocument();
   });
 
   it("does not show improvement indicator when scores are equal", () => {
@@ -95,6 +100,62 @@ describe("MatchScore", () => {
 
     const improvement = screen.queryByText(/^\+\d+$/);
     expect(improvement).not.toBeInTheDocument();
+  });
+
+  it("excludes missingKeywords terms from the backed coverage score", () => {
+    const props = {
+      originalResume: "React",
+      tailoredResume: "React TypeScript Node.js Python",
+      jobDescription: "React TypeScript Node.js Python",
+      missingKeywords: [
+        { term: "typescript", question: "Have you used TypeScript?" },
+        { term: "python", question: "Have you used Python?" },
+      ],
+    };
+
+    render(<MatchScore {...props} />);
+    // Backed coverage = JD keywords matched in the ORIGINAL resume (just
+    // "react" out of 4 total JD keywords) plus any confirmed keywords (none
+    // here) — i.e. 1/4 = 25%, curved.
+    const scoreCircles = screen.getAllByText(/^\d+$/);
+    const afterScoreText = scoreCircles[scoreCircles.length - 1].textContent;
+    const afterScoreNum = Number(afterScoreText);
+    const expected = curveScore(Math.round((1 / 4) * 100));
+    expect(afterScoreNum).toBe(expected);
+  });
+
+  it("does not count a confirmed term that doesn't map to a JD keyword", () => {
+    const props = {
+      originalResume: "React",
+      tailoredResume: "React TypeScript Node.js Python",
+      jobDescription: "React TypeScript Node.js Python",
+      confirmedKeywords: ["kubernetes"],
+    };
+
+    render(<MatchScore {...props} />);
+    // "kubernetes" isn't a JD keyword, so backed coverage should be unchanged
+    // from the baseline (1/4 = 25%, curved) — the unmatched confirmed term
+    // must not inflate the score.
+    const scoreCircles = screen.getAllByText(/^\d+$/);
+    const afterScoreText = scoreCircles[scoreCircles.length - 1].textContent;
+    const afterScoreNum = Number(afterScoreText);
+    const expected = curveScore(Math.round((1 / 4) * 100));
+    expect(afterScoreNum).toBe(expected);
+  });
+
+  it("includes confirmed keywords in the backed coverage score", () => {
+    const props = {
+      originalResume: "React",
+      tailoredResume: "React TypeScript Node.js Python",
+      jobDescription: "React TypeScript Node.js Python",
+      confirmedKeywords: ["typescript", "node.js", "python"],
+    };
+
+    render(<MatchScore {...props} />);
+    // All 4 JD keywords are now backed (1 from original resume + 3 confirmed) -> 100%.
+    const scoreCircles = screen.getAllByText(/^\d+$/);
+    const afterScoreText = scoreCircles[scoreCircles.length - 1].textContent;
+    expect(Number(afterScoreText)).toBe(100);
   });
 
   describe("LLM keywords", () => {
@@ -180,32 +241,29 @@ describe("MatchScore", () => {
     });
   });
 
-  describe("server scores", () => {
-    it("uses server scores when provided instead of client-computed values", () => {
+  describe("server before score", () => {
+    it("uses server before score when provided, recomputes after score from missingKeywords", () => {
       render(
         <MatchScore
           originalResume="no keywords here"
-          tailoredResume="no keywords here either"
+          tailoredResume="React TypeScript Node.js"
           jobDescription="React TypeScript Node.js"
           serverBeforeScore={25}
           serverAfterScore={78}
         />
       );
 
-      // Should render the server-provided scores
+      // Should render the server-provided before score.
       expect(screen.getByText("25")).toBeInTheDocument();
-      expect(screen.getByText("78")).toBeInTheDocument();
-      // Should show improvement
-      expect(screen.getByText("+53")).toBeInTheDocument();
     });
 
-    it("logs server scores to console instead of client keywords", () => {
+    it("logs server scores to console", () => {
       const consoleSpy = jest.spyOn(console, "debug").mockImplementation();
       try {
         render(
           <MatchScore
             originalResume="anything"
-            tailoredResume="anything"
+            tailoredResume="React"
             jobDescription="React"
             serverBeforeScore={10}
             serverAfterScore={90}
@@ -214,11 +272,6 @@ describe("MatchScore", () => {
         expect(consoleSpy).toHaveBeenCalledWith(
           expect.stringContaining("server-computed scores")
         );
-        // Should NOT log client-side keyword matching
-        const matchedCall = consoleSpy.mock.calls.find(
-          (c) => typeof c[0] === "string" && c[0].includes("Matched keywords")
-        );
-        expect(matchedCall).toBeUndefined();
       } finally {
         consoleSpy.mockRestore();
       }
@@ -234,8 +287,8 @@ describe("MatchScore", () => {
       );
 
       // Before and After labels should render with client-computed scores
-      expect(screen.getByText("Before")).toBeInTheDocument();
-      expect(screen.getByText("After")).toBeInTheDocument();
+      expect(screen.getAllByText(/Before/).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/After/).length).toBeGreaterThan(0);
     });
   });
 

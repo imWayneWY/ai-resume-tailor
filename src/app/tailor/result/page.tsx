@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import MatchScore from "@/components/MatchScore";
+import MissingKeywords, { type MissingKeywordItem, type ConfirmedFactEntry } from "@/components/MissingKeywords";
+import ChangesDiff, { type Change } from "@/components/ChangesDiff";
 
 /**
  * Render **bold** markers in the preview pane so it matches the PDF instead
@@ -33,6 +35,112 @@ interface Section {
   content: string;
 }
 
+interface ValidationResult {
+  bannedPhraseHits: { phrase: string; context: string }[];
+  tackedOnClauseHits: { clause: string; context: string }[];
+  overusedKeywords: { term: string; count: number }[];
+  newNumbers: string[];
+  newProperNouns: string[];
+}
+
+/**
+ * Surfaces the deterministic guardrail checks run against the AI's output
+ * right after generation. This is a check of what the model produced, not
+ * of any manual edits made afterward in the Edit Sections panel.
+ */
+function GeneratedContentChecks({ validation }: { validation: ValidationResult }) {
+  const hasAnyHits =
+    validation.bannedPhraseHits.length > 0 ||
+    validation.tackedOnClauseHits.length > 0 ||
+    validation.overusedKeywords.length > 0 ||
+    validation.newNumbers.length > 0 ||
+    validation.newProperNouns.length > 0;
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-4 shadow-sm sm:p-6">
+      <h2 className="mb-1 text-sm font-medium uppercase tracking-wide text-muted">
+        Generated content checks
+      </h2>
+      <p className="mb-4 text-xs text-muted">
+        Automated checks run on the AI&apos;s output right after it was generated.
+        These do not reflect any manual edits you make below.
+      </p>
+
+      {!hasAnyHits && (
+        <p className="text-sm text-muted">No issues found in the generated content.</p>
+      )}
+
+      {validation.bannedPhraseHits.length > 0 && (
+        <div className="mb-3">
+          <p className="mb-1 text-xs font-semibold text-muted">Banned phrases</p>
+          <ul className="flex flex-col gap-1">
+            {validation.bannedPhraseHits.map((hit, i) => (
+              <li key={i} className="text-sm">
+                <span className="font-medium text-error-text">{hit.phrase}</span>
+                <span className="text-muted"> — &quot;{hit.context}&quot;</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {validation.tackedOnClauseHits.length > 0 && (
+        <div className="mb-3">
+          <p className="mb-1 text-xs font-semibold text-muted">Tacked-on clauses</p>
+          <ul className="flex flex-col gap-1">
+            {validation.tackedOnClauseHits.map((hit, i) => (
+              <li key={i} className="text-sm">
+                <span className="font-medium text-error-text">{hit.clause}</span>
+                <span className="text-muted"> — &quot;{hit.context}&quot;</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {validation.overusedKeywords.length > 0 && (
+        <div className="mb-3">
+          <p className="mb-1 text-xs font-semibold text-muted">Overused keywords</p>
+          <ul className="flex flex-col gap-1">
+            {validation.overusedKeywords.map((kw, i) => (
+              <li key={i} className="text-sm">
+                <span className="font-medium text-error-text">{kw.term}</span>
+                <span className="text-muted"> — used {kw.count} times</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {validation.newNumbers.length > 0 && (
+        <div className="mb-3">
+          <p className="mb-1 text-xs font-semibold text-muted">New numbers not in the original resume</p>
+          <ul className="flex flex-wrap gap-2">
+            {validation.newNumbers.map((n, i) => (
+              <li key={i} className="rounded-full border border-error-border bg-error-bg px-2 py-0.5 text-xs text-error-text">
+                {n}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {validation.newProperNouns.length > 0 && (
+        <div>
+          <p className="mb-1 text-xs font-semibold text-muted">New proper nouns not in the original resume</p>
+          <ul className="flex flex-wrap gap-2">
+            {validation.newProperNouns.map((n, i) => (
+              <li key={i} className="rounded-full border border-error-border bg-error-bg px-2 py-0.5 text-xs text-error-text">
+                {n}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface PersonalInfo {
   fullName: string;
   email: string;
@@ -54,6 +162,15 @@ interface TailorResult {
   };
   beforeScore?: number;
   afterScore?: number;
+  changes?: Change[];
+  missingKeywords?: MissingKeywordItem[];
+  validation?: {
+    bannedPhraseHits: { phrase: string; context: string }[];
+    tackedOnClauseHits: { clause: string; context: string }[];
+    overusedKeywords: { term: string; count: number }[];
+    newNumbers: string[];
+    newProperNouns: string[];
+  };
 }
 
 export default function ResultPage() {
@@ -78,6 +195,16 @@ export default function ResultPage() {
   const [pdfGenerating, setPdfGenerating] = useState(false);
   const [pdfError, setPdfError] = useState("");
   const pdfGeneratingRef = useRef(false);
+  const [isRegenerating, setIsRegenerating] = useState(false);
+  const [regenerateError, setRegenerateError] = useState("");
+  const [rejectedChangeIndices, setRejectedChangeIndices] = useState<Set<number>>(new Set());
+  // Accumulated confirmations across all regeneration rounds, keyed by term
+  // (lowercased, trimmed) so earlier rounds' explanations aren't lost when a
+  // later round sends its own confirmations. Both the confirmedFacts prompt
+  // text and the confirmedKeywords used for scoring are derived from this
+  // single source of truth.
+  const [confirmedFactsMap, setConfirmedFactsMap] = useState<Map<string, string>>(new Map());
+  const confirmedKeywords = useMemo(() => Array.from(confirmedFactsMap.keys()), [confirmedFactsMap]);
 
   useEffect(() => {
     const stored = sessionStorage.getItem("tailorResult");
@@ -142,6 +269,131 @@ export default function ResultPage() {
       return next;
     });
   }, []);
+
+  const handleAcceptChange = useCallback(
+    (index: number) => {
+      const change = result?.changes?.[index];
+      if (change) {
+        setEditableSections((prev) =>
+          prev.map((section) =>
+            section.title === change.section
+              ? { ...section, content: section.content.replace(change.original, change.revised) }
+              : section
+          )
+        );
+      }
+      setRejectedChangeIndices((prev) => {
+        const next = new Set(prev);
+        next.delete(index);
+        return next;
+      });
+    },
+    [result]
+  );
+
+  const [editFailedIndices, setEditFailedIndices] = useState<Set<number>>(new Set());
+
+  const handleRejectChange = useCallback(
+    (index: number) => {
+      const change = result?.changes?.[index];
+      if (!change) return;
+      let matched = false;
+      setEditableSections((prev) =>
+        prev.map((section) => {
+          if (section.title !== change.section) return section;
+          if (!section.content.includes(change.revised)) {
+            return section;
+          }
+          matched = true;
+          return { ...section, content: section.content.replace(change.revised, change.original) };
+        })
+      );
+      setRejectedChangeIndices((prev) => new Set(prev).add(index));
+      setEditFailedIndices((prev) => {
+        const next = new Set(prev);
+        if (matched) {
+          next.delete(index);
+        } else {
+          next.add(index);
+        }
+        return next;
+      });
+    },
+    [result]
+  );
+
+  const handleRegenerate = useCallback(
+    async (confirmedEntries: ConfirmedFactEntry[]) => {
+      setRegenerateError("");
+      setIsRegenerating(true);
+      // Merge this round's confirmations into the accumulated map so earlier
+      // rounds' explanations aren't lost on subsequent regenerations.
+      const mergedMap = new Map(confirmedFactsMap);
+      for (const { term, explanation } of confirmedEntries) {
+        if (term) mergedMap.set(term, explanation);
+      }
+      setConfirmedFactsMap(mergedMap);
+      const confirmedFacts = Array.from(mergedMap.entries())
+        .map(([term, explanation]) => `- ${term}: ${explanation}`)
+        .join("\n");
+      try {
+        const requestBody: Record<string, unknown> = {
+          resume: originalResume,
+          jobDescription,
+          generateCoverLetter: !!result?.coverLetter,
+          confirmedFacts,
+        };
+        if (llmKeywords) {
+          requestBody.targetKeywords = llmKeywords;
+        }
+
+        const response = await fetch("/api/tailor", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(requestBody),
+        });
+
+        const contentType = response.headers.get("content-type") || "";
+        const text = await response.text();
+
+        let data: TailorResult | null = null;
+        if (contentType.includes("application/json") && text) {
+          try {
+            data = JSON.parse(text);
+          } catch {
+            // JSON parsing failed
+          }
+        }
+
+        if (!response.ok || !data) {
+          setRegenerateError("Failed to regenerate. Please try again.");
+          return;
+        }
+
+        setResult(data);
+        setEditableSections(data.sections.map((s) => ({ ...s })));
+        setRejectedChangeIndices(new Set());
+        sessionStorage.setItem("tailorResult", JSON.stringify(data));
+
+        if (typeof data.jobTitle === "string" && data.jobTitle.trim()) {
+          setJobTitle(data.jobTitle.trim());
+        }
+        const info = data.personalInfo || {};
+        setPersonalInfo({
+          fullName: info.fullName || "",
+          email: info.email || "",
+          phone: info.phone || "",
+          location: info.location || "",
+          linkedin: info.linkedin || "",
+        });
+      } catch {
+        setRegenerateError("Network error — please check your connection and try again.");
+      } finally {
+        setIsRegenerating(false);
+      }
+    },
+    [originalResume, jobDescription, result, llmKeywords, confirmedFactsMap]
+  );
 
   useEffect(() => {
     if (editableSections.length === 0) return;
@@ -274,6 +526,49 @@ export default function ResultPage() {
             llmKeywords={llmKeywords}
             serverBeforeScore={result?.beforeScore}
             serverAfterScore={result?.afterScore}
+            missingKeywords={result?.missingKeywords}
+            confirmedKeywords={confirmedKeywords}
+          />
+        </div>
+      )}
+
+      {/* Missing keywords review */}
+      {result.missingKeywords && result.missingKeywords.length > 0 && (
+        <div className="mb-6 sm:mb-8">
+          <div aria-live="polite">
+            {regenerateError && (
+              <div
+                role="alert"
+                className="mb-4 rounded-lg border border-error-border bg-error-bg px-4 py-3 text-sm text-error-text"
+              >
+                {regenerateError}
+              </div>
+            )}
+          </div>
+          <MissingKeywords
+            missingKeywords={result.missingKeywords}
+            onRegenerate={handleRegenerate}
+            isRegenerating={isRegenerating}
+          />
+        </div>
+      )}
+
+      {/* Generated content checks */}
+      {result.validation && (
+        <div className="mb-6 sm:mb-8">
+          <GeneratedContentChecks validation={result.validation} />
+        </div>
+      )}
+
+      {/* Changes diff */}
+      {result.changes && result.changes.length > 0 && (
+        <div className="mb-6 sm:mb-8">
+          <ChangesDiff
+            changes={result.changes}
+            onAccept={handleAcceptChange}
+            onReject={handleRejectChange}
+            rejectedIndices={rejectedChangeIndices}
+            failedIndices={editFailedIndices}
           />
         </div>
       )}

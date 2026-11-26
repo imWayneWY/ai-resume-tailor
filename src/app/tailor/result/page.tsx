@@ -41,6 +41,7 @@ interface ValidationResult {
   overusedKeywords: { term: string; count: number }[];
   newNumbers: string[];
   newProperNouns: string[];
+  droppedSkills: string[];
 }
 
 /**
@@ -54,7 +55,8 @@ function GeneratedContentChecks({ validation }: { validation: ValidationResult }
     validation.tackedOnClauseHits.length > 0 ||
     validation.overusedKeywords.length > 0 ||
     validation.newNumbers.length > 0 ||
-    validation.newProperNouns.length > 0;
+    validation.newProperNouns.length > 0 ||
+    validation.droppedSkills.length > 0;
 
   return (
     <div className="rounded-lg border border-border bg-card p-4 shadow-sm sm:p-6">
@@ -68,6 +70,24 @@ function GeneratedContentChecks({ validation }: { validation: ValidationResult }
 
       {!hasAnyHits && (
         <p className="text-sm text-muted">No issues found in the generated content.</p>
+      )}
+
+      {validation.droppedSkills.length > 0 && (
+        <div className="mb-3 rounded-md border border-error-border bg-error-bg p-2">
+          <p className="mb-1 text-xs font-semibold text-error-text">
+            ⚠ Dropped skills — present in the original but missing from the tailored resume
+          </p>
+          <ul className="flex flex-wrap gap-2">
+            {validation.droppedSkills.map((skill, i) => (
+              <li
+                key={i}
+                className="rounded-full border border-error-border bg-error-bg px-2 py-0.5 text-xs font-medium text-error-text"
+              >
+                {skill}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       {validation.bannedPhraseHits.length > 0 && (
@@ -172,6 +192,7 @@ interface TailorResult {
     overusedKeywords: { term: string; count: number }[];
     newNumbers: string[];
     newProperNouns: string[];
+    droppedSkills: string[];
   };
 }
 

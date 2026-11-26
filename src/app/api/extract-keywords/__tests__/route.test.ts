@@ -73,6 +73,45 @@ afterEach(() => {
 // ---------- validation ----------
 
 describe("POST /api/extract-keywords", () => {
+  it("filters out generic blocklisted terms even when the model returns them", async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  keywords: [
+                    { term: "React", category: "technical", required: true },
+                    { term: "Software Development", category: "technical", required: true },
+                    { term: "software engineering", category: "domain", required: false },
+                    { term: "Programming", category: "technical", required: false },
+                    { term: "coding", category: "technical", required: false },
+                    { term: "Development", category: "domain", required: false },
+                    { term: "Engineering", category: "domain", required: false },
+                  ],
+                }),
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+
+    const res = await POST(makeRequest(validBody));
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    const terms = json.keywords.map((k: { term: string }) => k.term.toLowerCase());
+    expect(terms).toContain("react");
+    expect(terms).not.toContain("software development");
+    expect(terms).not.toContain("software engineering");
+    expect(terms).not.toContain("programming");
+    expect(terms).not.toContain("coding");
+    expect(terms).not.toContain("development");
+    expect(terms).not.toContain("engineering");
+  });
+
   describe("input validation", () => {
     it("returns 400 for invalid JSON", async () => {
       const res = await POST(makeInvalidJsonRequest());

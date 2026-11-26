@@ -1,4 +1,4 @@
-import { validateTailoredResume } from "../resume-validator";
+import { validateTailoredResume, flagLargeDeletion } from "../resume-validator";
 
 describe("validateTailoredResume", () => {
   const original = "Built a checkout flow using Jest and Playwright for testing. Led a team of 3 engineers.";
@@ -156,5 +156,41 @@ describe("validateTailoredResume", () => {
     expect(result.newProperNouns).not.toContain("Cloud");
     expect(result.newProperNouns).not.toContain("Backend");
     expect(result.newProperNouns).toContain("Snowflake");
+  });
+
+  it("flags a skill dropped from the tailored Skills section", () => {
+    const originalWithSkills =
+      "Summary\nBuilt things.\n\nSkills\nLanguages: JavaScript, TypeScript, GraphQL\nTools: Docker, Git";
+    const tailored = [
+      { title: "Skills", content: "Languages: JavaScript, TypeScript\nTools: Docker, Git" },
+    ];
+    const result = validateTailoredResume(originalWithSkills, tailored, []);
+    expect(result.droppedSkills).toContain("GraphQL");
+  });
+
+  it("does not flag any dropped skills when everything is preserved", () => {
+    const originalWithSkills =
+      "Summary\nBuilt things.\n\nSkills\nLanguages: JavaScript, TypeScript, GraphQL\nTools: Docker, Git";
+    const tailored = [
+      { title: "Skills", content: "Languages: TypeScript, JavaScript, GraphQL\nTools: Git, Docker" },
+    ];
+    const result = validateTailoredResume(originalWithSkills, tailored, []);
+    expect(result.droppedSkills).toEqual([]);
+  });
+});
+
+describe("flagLargeDeletion", () => {
+  it("flags when a full sentence is dropped", () => {
+    const original =
+      "Developed a multi-method checkout flow supporting credit card, WeChat Pay and Alipay. Improved conversion for the platform's core transaction pipeline.";
+    const revised =
+      "Developed a multi-method checkout flow supporting credit card, WeChat Pay and Alipay.";
+    expect(flagLargeDeletion(original, revised)).toBe(true);
+  });
+
+  it("does not flag a pure adjective removal", () => {
+    const original = "Built high-impact features for the team.";
+    const revised = "Built features for the team.";
+    expect(flagLargeDeletion(original, revised)).toBe(false);
   });
 });

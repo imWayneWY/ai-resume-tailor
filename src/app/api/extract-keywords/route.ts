@@ -10,6 +10,20 @@ import { createRateLimiter, getClientIp } from "@/lib/rate-limit";
 
 const rateLimiter = createRateLimiter({ limit: 10, windowMs: 60_000 });
 
+/**
+ * Generic terms that should never reach the client regardless of the
+ * category/required the model assigned them — they're too broad to be
+ * actionable ATS keywords.
+ */
+const GENERIC_KEYWORD_BLOCKLIST = new Set([
+  "software development",
+  "software engineering",
+  "programming",
+  "coding",
+  "development",
+  "engineering",
+]);
+
 export type KeywordCategory = "technical" | "domain" | "soft";
 
 export interface KeywordItem {
@@ -192,6 +206,7 @@ export async function POST(request: NextRequest) {
       if (typeof item.term !== "string") continue;
       const term = item.term.trim().replace(/\s+/g, " ");
       if (term.length === 0) continue;
+      if (GENERIC_KEYWORD_BLOCKLIST.has(term.toLowerCase())) continue;
       const category: KeywordCategory =
         item.category === "technical" || item.category === "domain" || item.category === "soft"
           ? item.category

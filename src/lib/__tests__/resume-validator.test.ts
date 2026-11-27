@@ -238,6 +238,21 @@ describe("validateTailoredResume", () => {
     expect(result.droppedSkills).toEqual(["GraphQL"]);
   });
 
+  it("drops exactly GraphQL from a real-production-shaped Skills line that starts with a bullet character (•), not a hyphen", () => {
+    const originalWithSkills =
+      "SKILLS\n• Languages: Typescript, Javascript, C#, Python, HTML, CSS • Technologies: React, Next.js, Redux, Styled Components, CSS Modules, Jest, React Testing Library, GraphQL, Playwright, Cypress, Node.js, Azure, Git, Yarn, webpack";
+    const tailored = [
+      {
+        title: "Skills",
+        content:
+          "Languages: Typescript, Javascript, C#, Python, HTML, CSS\nTechnologies: React, Next.js, Redux, Styled Components, CSS Modules, Jest, React Testing Library, Playwright, Cypress, Node.js, Azure, Git, Yarn, webpack",
+      },
+    ];
+    const bulletResult = validateTailoredResume(originalWithSkills, tailored, []);
+    expect(bulletResult.droppedSkills).toEqual(["GraphQL"]);
+  });
+
+
   it("drops no skills (including no label false-positives) when GraphQL is kept, even with extra spacing around separators", () => {
     const originalWithSkills =
       "SKILLS\n-   Languages:  Typescript, Javascript, C#, Python, HTML, CSS  •  Technologies:  React, Next.js, Redux, Styled Components, CSS Modules, Jest, React Testing Library, GraphQL, Playwright, Cypress, Node.js, Azure, Git, Yarn, webpack";

@@ -156,7 +156,7 @@ describe("ResultPage", () => {
     render(<ResultPage />);
 
     expect(screen.getByText("Experienced developer")).toBeInTheDocument();
-    expect(screen.getByText("TypeScript, React, Node.js")).toBeInTheDocument();
+    expect(document.body.textContent).toContain("TypeScript, React, Node.js");
   });
 
   it("renders Back button that navigates to /tailor", async () => {
@@ -411,6 +411,55 @@ describe("ResultPage", () => {
           screen.getByText(/significantly improving developer productivity and code maintainability/)
         ).toBeInTheDocument();
       });
+    });
+
+    it("editing a bullet persists the updated content to sessionStorage's tailorResult, and survives a simulated reload", async () => {
+      const user = userEvent.setup();
+      sessionStore.tailorResult = JSON.stringify(resultWithRealDiff);
+      sessionStore.tailorOriginalResume =
+        "Experience\n• Led full codebase migration from JavaScript to TypeScript, significantly improving developer productivity and code maintainability";
+      const { unmount } = render(<ResultPage />);
+
+      const bulletText = screen.getByText(/Led full codebase migration/);
+      await user.click(bulletText);
+
+      const editButton = await screen.findByRole("button", { name: /^edit$/i });
+      await user.click(editButton);
+
+      const textarea = screen.getByDisplayValue(/Led full codebase migration/);
+      await user.clear(textarea);
+      await user.type(textarea, "Led the TypeScript migration end-to-end.");
+
+      const saveButton = await screen.findByRole("button", { name: /^save$/i });
+      await user.click(saveButton);
+
+      await waitFor(() => {
+        const stored = JSON.parse(sessionStore.tailorResult);
+        expect(stored.sections[0].content).toContain("Led the TypeScript migration end-to-end.");
+      });
+
+      // Simulate a reload: unmount, re-read from sessionStorage, re-render.
+      unmount();
+      render(<ResultPage />);
+      const reloaded = JSON.parse(sessionStore.tailorResult);
+      expect(reloaded.sections[0].content).toContain("Led the TypeScript migration end-to-end.");
+    });
+
+    it("unchanged bullets are also clickable/editable, not just changed ones", async () => {
+      const user = userEvent.setup();
+      const unchangedResult = {
+        ...validResult,
+        sections: [{ title: "Experience", content: "• Built the checkout flow." }],
+      };
+      sessionStore.tailorResult = JSON.stringify(unchangedResult);
+      sessionStore.tailorOriginalResume = "Experience\n• Built the checkout flow.";
+      render(<ResultPage />);
+
+      const bulletText = screen.getByText(/Built the checkout flow/);
+      await user.click(bulletText);
+
+      expect(await screen.findByRole("button", { name: /^edit$/i })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /^revert$/i })).not.toBeInTheDocument();
     });
   });
 

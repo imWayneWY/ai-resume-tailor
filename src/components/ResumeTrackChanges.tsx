@@ -6,6 +6,13 @@ import {
   alignUnits,
   diffAlignedPair,
   extractOriginalSectionText,
+  findUnmatchedOriginalIndices,
+  findMissingOriginalSections,
+  groupTailoredIndicesByOriginal,
+  replaceUnitSpan,
+  replaceUnitsSpan,
+  insertUnitAfter,
+  type ContentUnit,
   type UnitDiff,
   type WordDiffOp,
 } from "@/lib/diff-utils";
@@ -80,11 +87,13 @@ interface UnitRowProps {
   isBullet: boolean;
   showChanges: boolean;
   reason?: string;
-  onRevert: () => void;
+  isAdded: boolean;
+  onRevert?: () => void;
   onEdit: (text: string) => void;
+  onRemove?: () => void;
 }
 
-function UnitRow({ diff, isBullet, showChanges, reason, onRevert, onEdit }: UnitRowProps) {
+function UnitRow({ diff, isBullet, showChanges, reason, isAdded, onRevert, onEdit, onRemove }: UnitRowProps) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(diff.tailoredText);
@@ -127,19 +136,24 @@ function UnitRow({ diff, isBullet, showChanges, reason, onRevert, onEdit }: Unit
   }
 
   const isChanged = diff.changed && diff.originalIndex !== -1;
+  const canRevert = isChanged && !!onRevert;
+
+  const openPopover = () => setOpen((o) => !o);
 
   return (
     <div className={isBullet ? "relative mb-1 pl-4" : "relative mb-1"}>
-      <span
-        role={isChanged ? "button" : undefined}
-        tabIndex={isChanged ? 0 : undefined}
-        onClick={() => isChanged && setOpen((o) => !o)}
-        className={`whitespace-pre-wrap text-sm leading-relaxed ${
-          isChanged ? "cursor-pointer rounded-sm hover:bg-surface" : ""
-        }`}
+      <button
+        type="button"
+        onClick={openPopover}
+        className="w-full whitespace-pre-wrap rounded-sm text-left text-sm leading-relaxed hover:bg-surface"
       >
         {isBullet && <span className="absolute left-0">•</span>}
         {showChanges && isChanged ? <DiffOps ops={diff.ops} /> : diff.tailoredText}
+        {isAdded && (
+          <span className="ml-1 rounded-sm bg-accent/10 px-1 text-[10px] font-medium uppercase tracking-wide text-accent">
+            added
+          </span>
+        )}
         {diff.warn && (
           <span
             title="This diff removes content that may be a real fact — review before accepting"
@@ -149,22 +163,24 @@ function UnitRow({ diff, isBullet, showChanges, reason, onRevert, onEdit }: Unit
             ⚠
           </span>
         )}
-      </span>
+      </button>
 
-      {open && isChanged && (
+      {open && (
         <div className="mt-1 w-full rounded-md border border-border bg-card p-2 text-xs shadow-sm">
           {reason && <p className="mb-2 text-muted">{reason}</p>}
           <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                onRevert();
-                setOpen(false);
-              }}
-              className="rounded-md border border-border px-2 py-1 font-medium hover:bg-surface"
-            >
-              Revert
-            </button>
+            {canRevert && (
+              <button
+                type="button"
+                onClick={() => {
+                  onRevert?.();
+                  setOpen(false);
+                }}
+                className="rounded-md border border-border px-2 py-1 font-medium hover:bg-surface"
+              >
+                Revert
+              </button>
+            )}
             <button
               type="button"
               onClick={() => {
@@ -174,6 +190,64 @@ function UnitRow({ diff, isBullet, showChanges, reason, onRevert, onEdit }: Unit
               className="rounded-md border border-border px-2 py-1 font-medium hover:bg-surface"
             >
               Edit
+            </button>
+            {isAdded && onRemove && (
+              <button
+                type="button"
+                onClick={() => {
+                  onRemove();
+                  setOpen(false);
+                }}
+                className="rounded-md border border-error-border px-2 py-1 font-medium text-error-text hover:bg-error-bg"
+              >
+                Remove
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface DeletedRowProps {
+  text: string;
+  isBullet: boolean;
+  onRestore: () => void;
+}
+
+/** A whole original bullet/sentence with no tailored counterpart — fully struck-through, always warned, with a Restore action. */
+function DeletedRow({ text, isBullet, onRestore }: DeletedRowProps) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={isBullet ? "relative mb-1 pl-4" : "relative mb-1"}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full whitespace-pre-wrap rounded-sm text-left text-sm leading-relaxed hover:bg-surface"
+      >
+        {isBullet && <span className="absolute left-0">•</span>}
+        <span className="text-muted line-through decoration-error-text/70">{text}</span>
+        <span
+          title="This original content was fully removed — review before accepting"
+          className="ml-1 text-error-text"
+          aria-label="warning"
+        >
+          ⚠
+        </span>
+      </button>
+      {open && (
+        <div className="mt-1 w-full rounded-md border border-border bg-card p-2 text-xs shadow-sm">
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                onRestore();
+                setOpen(false);
+              }}
+              className="rounded-md border border-border px-2 py-1 font-medium hover:bg-surface"
+            >
+              Restore
             </button>
           </div>
         </div>
@@ -190,7 +264,9 @@ function UnitRow({ diff, isBullet, showChanges, reason, onRevert, onEdit }: Unit
  *    model's self-reported `changes`, which can miss real diffs).
  *  - Lets the user toggle between a diff view ("Show changes") and the
  *    exact clean/final text ("Clean" — what the PDF renders).
- *  - Supports click-to-revert / click-to-edit per bullet/sentence.
+ *  - Supports click-to-revert / click-to-edit per bullet/sentence, surfaces
+ *    fully-deleted bullets/sentences/sections with a Restore action, and
+ *    treats split-bullet groups as one logical change on revert.
  */
 export default function ResumeTrackChanges({
   sections,
@@ -213,19 +289,84 @@ export default function ResumeTrackChanges({
       const tailoredUnits = splitIntoUnits(section.content);
       const pairs = alignUnits(originalUnits, tailoredUnits);
       const diffs = pairs.map(diffAlignedPair);
-      return { section, tailoredUnits, diffs };
+      const unmatchedOriginalIndices = findUnmatchedOriginalIndices(originalUnits, pairs);
+      const groups = groupTailoredIndicesByOriginal(pairs);
+      return { section, originalUnits, tailoredUnits, diffs, unmatchedOriginalIndices, groups };
     });
   }, [sections, originalResume]);
 
+  const missingSections = useMemo(
+    () => findMissingOriginalSections(originalResume, sections),
+    [originalResume, sections]
+  );
+
+  const setSectionContent = (sectionIndex: number, newContent: string) => {
+    const nextSections = sections.map((s, i) => (i === sectionIndex ? { ...s, content: newContent } : s));
+    onSectionsChange(nextSections);
+  };
+
+  /** Edits exactly one unit's span in place — never rejoins the whole section. */
   const updateUnitText = (sectionIndex: number, unitIndex: number, newText: string) => {
     const { tailoredUnits } = sectionDiffs[sectionIndex];
-    const next = tailoredUnits.map((u, i) => (i === unitIndex ? { ...u, text: newText } : u));
-    const newContent = next
-      .map((u) => (u.isBullet ? `• ${u.text}` : u.text))
-      .join(sections[sectionIndex].content.includes("\n") ? "\n" : " ");
-    const nextSections = sections.map((s, i) =>
-      i === sectionIndex ? { ...s, content: newContent } : s
-    );
+    const unit = tailoredUnits[unitIndex];
+    if (!unit) return;
+    const newContent = replaceUnitSpan(sections[sectionIndex].content, unit, newText);
+    setSectionContent(sectionIndex, newContent);
+  };
+
+  /** Removes an added (originalIndex === -1) unit entirely from the section content. */
+  const removeUnit = (sectionIndex: number, unitIndex: number) => {
+    const { tailoredUnits } = sectionDiffs[sectionIndex];
+    const unit = tailoredUnits[unitIndex];
+    if (!unit) return;
+    const content = sections[sectionIndex].content;
+    // Remove the unit's span plus one adjacent line break / leading space so
+    // we don't leave a dangling blank line behind.
+    const before = content.slice(0, unit.start);
+    const afterRaw = content.slice(unit.start + unit.raw.length);
+    const after = afterRaw.replace(/^\r?\n/, "");
+    const trimmedBefore = after.length === 0 ? before.replace(/\r?\n$/, "") : before;
+    setSectionContent(sectionIndex, trimmedBefore + after);
+  };
+
+  /** Group-level revert: replaces ALL tailored units in the group with a single copy of the shared original text, collapsing the group back to one unit. */
+  const revertGroup = (sectionIndex: number, originalIndex: number) => {
+    const { tailoredUnits, originalUnits, groups } = sectionDiffs[sectionIndex];
+    const tailoredIndices = groups.get(originalIndex);
+    if (!tailoredIndices || tailoredIndices.length === 0) return;
+    const groupUnits = tailoredIndices.map((i) => tailoredUnits[i]).filter(Boolean) as ContentUnit[];
+    const originalUnit = originalUnits[originalIndex];
+    if (!originalUnit || groupUnits.length === 0) return;
+    const newContent = replaceUnitsSpan(sections[sectionIndex].content, groupUnits, originalUnit.text);
+    setSectionContent(sectionIndex, newContent);
+  };
+
+  /** Restores a fully-deleted original unit back into the tailored content, right after the nearest preceding matched tailored unit (preserving order as best as possible). */
+  const restoreDeletedUnit = (sectionIndex: number, originalIndex: number) => {
+    const { tailoredUnits, originalUnits, diffs } = sectionDiffs[sectionIndex];
+    const originalUnit = originalUnits[originalIndex];
+    if (!originalUnit) return;
+    // Find the nearest preceding original index that IS matched, then find
+    // that matched tailored unit (last one, if split into a group) to
+    // insert after.
+    let afterUnit: ContentUnit | undefined;
+    for (let oi = originalIndex - 1; oi >= 0; oi--) {
+      const matchingDiffs = diffs.filter((d) => d.originalIndex === oi);
+      if (matchingDiffs.length > 0) {
+        const lastTailoredIndex = Math.max(...matchingDiffs.map((d) => d.tailoredIndex));
+        afterUnit = tailoredUnits[lastTailoredIndex];
+        break;
+      }
+    }
+    const newContent = insertUnitAfter(sections[sectionIndex].content, afterUnit, originalUnit.raw);
+    setSectionContent(sectionIndex, newContent);
+  };
+
+  /** Restores a fully-deleted original SECTION back into the sections array at its best-effort original position. */
+  const restoreDeletedSection = (heading: string, content: string, insertIndex: number) => {
+    const nextSections = [...sections];
+    const clampedIndex = Math.max(0, Math.min(insertIndex, nextSections.length));
+    nextSections.splice(clampedIndex, 0, { title: heading.replace(/:\s*$/, ""), content });
     onSectionsChange(nextSections);
   };
 
@@ -257,27 +398,71 @@ export default function ResumeTrackChanges({
         </div>
       </div>
 
-      {sectionDiffs.map(({ section, diffs }, sectionIndex) => (
+      {sectionDiffs.map(({ section, diffs, originalUnits, unmatchedOriginalIndices }, sectionIndex) => (
         <div key={section.title} className={sectionIndex > 0 ? "mt-6" : ""}>
           <h3 className="mb-3 border-b border-border pb-1 text-lg font-semibold tracking-tight">
             {section.title}
           </h3>
           <div>
-            {diffs.map((diff, unitIndex) => (
-              <UnitRow
-                key={unitIndex}
-                diff={diff}
-                isBullet={sectionDiffs[sectionIndex].tailoredUnits[unitIndex]?.isBullet ?? false}
-                showChanges={showChanges}
-                reason={findReason(diff, changes, section.title)}
-                onRevert={() => {
-                  if (diff.originalIndex === -1) return;
-                  updateUnitText(sectionIndex, unitIndex, diff.originalText);
-                }}
-                onEdit={(text) => updateUnitText(sectionIndex, unitIndex, text)}
-              />
-            ))}
+            {diffs.map((diff, unitIndex) => {
+              const unit = sectionDiffs[sectionIndex].tailoredUnits[unitIndex];
+              const isBullet = unit?.isBullet ?? false;
+              const isAdded = diff.originalIndex === -1;
+              return (
+                <UnitRow
+                  key={unitIndex}
+                  diff={diff}
+                  isBullet={isBullet}
+                  showChanges={showChanges}
+                  reason={findReason(diff, changes, section.title)}
+                  isAdded={isAdded}
+                  onRevert={
+                    diff.originalIndex !== -1
+                      ? () => revertGroup(sectionIndex, diff.originalIndex)
+                      : undefined
+                  }
+                  onEdit={(text) => updateUnitText(sectionIndex, unitIndex, text)}
+                  onRemove={isAdded ? () => removeUnit(sectionIndex, unitIndex) : undefined}
+                />
+              );
+            })}
+            {unmatchedOriginalIndices.map((originalIndex) => {
+              const originalUnit = originalUnits[originalIndex];
+              if (!originalUnit) return null;
+              return (
+                <DeletedRow
+                  key={`deleted-${originalIndex}`}
+                  text={originalUnit.text}
+                  isBullet={originalUnit.isBullet}
+                  onRestore={() => restoreDeletedUnit(sectionIndex, originalIndex)}
+                />
+              );
+            })}
           </div>
+        </div>
+      ))}
+
+      {missingSections.map(({ heading, content, insertIndex }) => (
+        <div key={`missing-section-${heading}`} className="mt-6">
+          <h3 className="mb-3 flex items-center gap-2 border-b border-border pb-1 text-lg font-semibold tracking-tight text-muted">
+            {heading.replace(/:\s*$/, "")}
+            <span className="rounded-sm bg-error-bg px-1 text-[10px] font-medium uppercase tracking-wide text-error-text">
+              deleted section
+            </span>
+          </h3>
+          <div className="mb-2 whitespace-pre-wrap text-sm leading-relaxed text-muted line-through decoration-error-text/70">
+            {content}
+            <span className="ml-1 text-error-text" aria-label="warning">
+              ⚠
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => restoreDeletedSection(heading, content, insertIndex)}
+            className="rounded-md border border-border px-2 py-1 text-xs font-medium hover:bg-surface"
+          >
+            Restore
+          </button>
         </div>
       ))}
     </div>

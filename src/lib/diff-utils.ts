@@ -11,7 +11,15 @@
 
 const PROPER_NOUN_RE = /\b[A-Z][a-zA-Z0-9+.#-]{2,}\b/g;
 const NUMBER_RE = /\b\d+(\.\d+)?%?/g;
-const SENTENCE_SPLIT_RE = /[.!?]+(\s+|$)/;
+// Matches one sentence's content up to and including its terminal
+// punctuation, where the punctuation must be followed by whitespace or
+// end-of-string (so "Node.js" / "C#" / version numbers don't get split
+// mid-token) — or a trailing fragment with no terminal punctuation at all.
+const SENTENCE_UNIT_RE = /(?:[^.!?]|[.!?](?!\s|$))+[.!?]*(?=\s|$)/g;
+
+// Matches a sentence/line/bullet boundary immediately preceding a position —
+// mirrors the heuristic used in resume-validator.ts's newProperNouns logic.
+const SENTENCE_START_BOUNDARY_RE = /(^|\n|\. |! |\? |• |- |: )$/;
 
 const BANNED_PHRASES = [
   "passionate",
@@ -35,9 +43,14 @@ const BANNED_PHRASES = [
   "fast-paced environment",
 ];
 
-// Subjective adjectives/adverbs and intent/values clauses that the system
-// prompt explicitly allows the model to delete. Removed text made up
-// entirely of these (plus stopwords/punctuation) should NOT get a warning.
+// Subjective adjectives/adverbs that the system prompt explicitly allows the
+// model to delete. Removed text made up entirely of these (plus
+// stopwords/punctuation) should NOT get a warning. NOTE: this list must only
+// contain genuinely subjective/fluff words — ordinary content words (e.g.
+// "design", "building", "products") do NOT belong here, or real factual
+// removals (e.g. "component design") would be silently waved through.
+// The "supporting X's commitment to..." style intent/values clause is
+// handled separately via INTENT_VALUES_CLAUSE_RE, not via individual words.
 const SUBJECTIVE_FILLER_WORDS = new Set([
   "passionate",
   "significantly",
@@ -56,14 +69,6 @@ const SUBJECTIVE_FILLER_WORDS = new Set([
   "self-starter",
   "committed",
   "dedicated",
-  "about",
-  "building",
-  "great",
-  "products",
-  "supporting",
-  "commitment",
-  "inclusive",
-  "design",
 ]);
 const STOPWORDS = new Set([
   "a",
@@ -85,16 +90,31 @@ const STOPWORDS = new Set([
 // when they happen to reference a company/proper noun — the clause itself
 // states intent/values, not a verifiable fact about scope of work.
 const INTENT_VALUES_CLAUSE_RE =
-  /\b(supporting|reflecting|aligned with|in line with)\b.{0,40}\b(commitment|values|culture|mission|vision)\b|\bin an? (fast-paced|dynamic|collaborative) environment\b/i;
+  /\b(supporting|reflecting|aligned with|in line with)\b.{0,40}\b(commitment|values|culture|mission|vision)\b(\s+(to|for|of|toward|towards)\s+[^,.;]*)?|\bin an? (fast-paced|dynamic|collaborative) environment\b/i;
 
-function isIntentValuesClause(removedText: string): boolean {
-  return INTENT_VALUES_CLAUSE_RE.test(removedText);
+/**
+ * Strips the FIRST matched intent/values clause substring out of the removed
+ * text (if any) and returns what's left. Only the matched clause itself is
+ * removed — any other factual content in the removed text survives so it
+ * can still be checked by the proper-noun/number/filler heuristics below.
+ */
+function stripIntentValuesClause(removedText: string): string {
+  const match = INTENT_VALUES_CLAUSE_RE.exec(removedText);
+  if (!match) return removedText;
+  return (removedText.slice(0, match.index) + removedText.slice(match.index + match[0].length))
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 // --- Stopwords & word-overlap alignment ---
 
+/**
+ * Tokenizes text into words, keeping internal hyphens as part of a single
+ * token (so multi-word filler entries like "high-impact" normalize to one
+ * token, not two separate ones).
+ */
 function normalizeWords(text: string): string[] {
-  return (text.toLowerCase().match(/[a-z0-9]+(?:[.#+][a-z0-9]+)*/g) || []).filter((w) => w.length > 0);
+  return (text.toLowerCase().match(/[a-z0-9]+(?:[-.#+][a-z0-9]+)*/g) || []).filter((w) => w.length > 0);
 }
 
 /** Word-overlap similarity (shared-word ratio over the union of word sets). */
@@ -114,12 +134,14 @@ export function similarity(a: string, b: string): number {
 // --- Splitting section content into bullets/sentences ---
 
 export interface ContentUnit {
-  /** The raw text of this unit, including any leading bullet marker. */
+  /** The exact original slice of content this unit owns (bullet marker + text, or the sentence with its terminal punctuation). */
   raw: string;
-  /** Text with a leading bullet marker (•/-/*) stripped, if present. */
+  /** Text with a leading bullet marker (•/-/*) stripped, if present. For prose units this equals `raw`. */
   text: string;
   /** Whether this unit is a bullet line (vs. a prose sentence). */
   isBullet: boolean;
+  /** Offset into the content string where `raw` begins. Together with `raw.length` this gives an exact, literal-replaceable span. */
+  start: number;
 }
 
 const BULLET_LINE_RE = /^[•\-*]\s+/;
@@ -127,31 +149,84 @@ const BULLET_LINE_RE = /^[•\-*]\s+/;
 /**
  * Splits section content into comparable units: lines starting with a
  * bullet marker become bullets; everything else is treated as prose and
- * split sentence-by-sentence.
+ * split sentence-by-sentence (terminal punctuation is preserved). Each unit
+ * records its exact `start` offset in `content` so callers can do a targeted
+ * literal-string replace of ONLY that unit's span — never rebuild the whole
+ * content by rejoining units (which would lose blank lines/formatting).
  */
 export function splitIntoUnits(content: string): ContentUnit[] {
   if (!content) return [];
   const units: ContentUnit[] = [];
   const lines = content.split(/\r?\n/);
+  let cursor = 0;
   for (const line of lines) {
     const trimmed = line.trim();
-    if (trimmed.length === 0) continue;
+    if (trimmed.length === 0) {
+      cursor += line.length + 1;
+      continue;
+    }
     if (BULLET_LINE_RE.test(trimmed)) {
-      units.push({ raw: trimmed, text: trimmed.replace(BULLET_LINE_RE, ""), isBullet: true });
+      const raw = trimmed;
+      const start = content.indexOf(raw, cursor);
+      units.push({ raw, text: raw.replace(BULLET_LINE_RE, ""), isBullet: true, start: start === -1 ? cursor : start });
+      cursor = (start === -1 ? cursor : start) + raw.length;
       continue;
     }
     // Prose line (e.g. an entry header, or a Summary paragraph): split into
     // sentences so long paragraphs are diffed at sentence granularity.
-    const sentences = trimmed
-      .split(SENTENCE_SPLIT_RE)
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0 && !/^[.!?]+$/.test(s));
-    if (sentences.length === 0) continue;
-    for (const sentence of sentences) {
-      units.push({ raw: sentence, text: sentence, isBullet: false });
+    // Terminal punctuation is kept as part of each sentence's raw/text.
+    const matches = trimmed.match(SENTENCE_UNIT_RE) || [];
+    for (const m of matches) {
+      const raw = m.trim();
+      if (!raw || /^[.!?]+$/.test(raw)) continue;
+      const start = content.indexOf(raw, cursor);
+      units.push({ raw, text: raw, isBullet: false, start: start === -1 ? cursor : start });
+      cursor = (start === -1 ? cursor : start) + raw.length;
     }
   }
   return units;
+}
+
+/**
+ * Replaces ONLY the given unit's exact span within `content` with new raw
+ * text — never rebuilds the whole content by rejoining units. Everything
+ * else (blank lines, other units, surrounding punctuation/whitespace)
+ * survives byte-for-byte.
+ */
+export function replaceUnitSpan(content: string, unit: ContentUnit, newText: string): string {
+  const newRaw = unit.isBullet ? `${unit.raw.match(BULLET_LINE_RE)?.[0] ?? "• "}${newText}` : newText;
+  return content.slice(0, unit.start) + newRaw + content.slice(unit.start + unit.raw.length);
+}
+
+/**
+ * Replaces the full span covering MULTIPLE contiguous-in-order units (e.g. a
+ * group of tailored units that all align to the same original unit, from a
+ * split bullet) with a single piece of raw text. Used by group-level revert.
+ */
+export function replaceUnitsSpan(content: string, units: ContentUnit[], newText: string): string {
+  if (units.length === 0) return content;
+  const sorted = [...units].sort((a, b) => a.start - b.start);
+  const first = sorted[0];
+  const last = sorted[sorted.length - 1];
+  const newRaw = first.isBullet ? `${first.raw.match(BULLET_LINE_RE)?.[0] ?? "• "}${newText}` : newText;
+  return content.slice(0, first.start) + newRaw + content.slice(last.start + last.raw.length);
+}
+
+/**
+ * Inserts `rawText` as a new unit right after `afterUnit` (or at the start
+ * of content if `afterUnit` is undefined), preserving everything else.
+ */
+export function insertUnitAfter(content: string, afterUnit: ContentUnit | undefined, rawText: string): string {
+  const insertPos = afterUnit ? afterUnit.start + afterUnit.raw.length : 0;
+  const separator = content.includes("\n") || !afterUnit ? "\n" : " ";
+  const prefix = content.slice(0, insertPos);
+  const suffix = content.slice(insertPos);
+  if (!afterUnit) {
+    // Inserting at the very start: put it before everything, then a
+    // separator before whatever followed.
+    return `${rawText}${suffix.length > 0 ? separator : ""}${suffix}`;
+  }
+  return `${prefix}${separator}${rawText}${suffix}`;
 }
 
 // --- Word-level diff (Myers-ish via LCS on word tokens) ---
@@ -237,7 +312,8 @@ const MIN_ALIGNMENT_SIMILARITY = 0.15;
  * Aligns each tailored unit to the most similar original unit (by word
  * overlap). Multiple tailored units may align to the same original unit
  * (e.g. when the model splits one bullet into two) — this is intentional:
- * reverting either tailored unit restores it to that shared original text.
+ * reverting either tailored unit restores it to that shared original text
+ * (see groupAlignedPairs for collapsing the whole group on revert).
  */
 export function alignUnits(originalUnits: ContentUnit[], tailoredUnits: ContentUnit[]): AlignedPair[] {
   return tailoredUnits.map((tailored, tailoredIndex) => {
@@ -261,6 +337,38 @@ export function alignUnits(originalUnits: ContentUnit[], tailoredUnits: ContentU
   });
 }
 
+/**
+ * Returns the indices (into `originalUnits`) that were never matched by any
+ * tailored unit — i.e. whole original bullets/sentences the tailored
+ * content silently dropped. Rendered as always-visible, always-warned
+ * "deleted" rows with a Restore action.
+ */
+export function findUnmatchedOriginalIndices(originalUnits: ContentUnit[], pairs: AlignedPair[]): number[] {
+  const matched = new Set(pairs.filter((p) => p.originalIndex !== -1).map((p) => p.originalIndex));
+  const unmatched: number[] = [];
+  for (let i = 0; i < originalUnits.length; i++) {
+    if (!matched.has(i)) unmatched.push(i);
+  }
+  return unmatched;
+}
+
+/**
+ * Groups tailored unit indices that share the same originalIndex (a split
+ * bullet) so the whole group can be treated — and reverted — as ONE logical
+ * change. Returns a map from originalIndex -> sorted tailoredIndex[].
+ */
+export function groupTailoredIndicesByOriginal(pairs: AlignedPair[]): Map<number, number[]> {
+  const groups = new Map<number, number[]>();
+  for (const pair of pairs) {
+    if (pair.originalIndex === -1) continue;
+    const list = groups.get(pair.originalIndex) ?? [];
+    list.push(pair.tailoredIndex);
+    groups.set(pair.originalIndex, list);
+  }
+  groups.forEach((list) => list.sort((a, b) => a - b));
+  return groups;
+}
+
 // --- Warning heuristic: should a ⚠ show on this diff? ---
 
 function wordsOf(text: string): string[] {
@@ -275,34 +383,74 @@ function isFillerOnlyRemoval(removedWords: string[]): boolean {
 }
 
 /**
+ * Determines whether `word` (a capitalized token found somewhere in
+ * `removedText`) is truly sentence-initial — by checking its position(s)
+ * within the ORIGINAL text, not by assuming the first word of whatever
+ * substring the diff algorithm happened to flag as removed is
+ * sentence-initial. A word that appears ONLY in sentence-initial position in
+ * the original is exempted (treated as ordinary capitalization, not a
+ * fabricated proper noun); a word that ever appears mid-sentence counts.
+ */
+function isSentenceInitialInOriginal(word: string, originalText: string): boolean {
+  const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(`\\b${escaped}\\b`, "g");
+  let match: RegExpExecArray | null;
+  let everMidSentence = false;
+  let found = false;
+  while ((match = re.exec(originalText)) !== null) {
+    found = true;
+    const preceding = originalText.slice(0, match.index);
+    const atStart = match.index === 0 || SENTENCE_START_BOUNDARY_RE.test(preceding);
+    if (!atStart) {
+      everMidSentence = true;
+      break;
+    }
+    if (match[0].length === 0) re.lastIndex++;
+  }
+  if (!found) return false;
+  return !everMidSentence;
+}
+
+/**
  * Decides whether the removed portion of a diff likely contains real,
  * factual content worth flagging:
  *  - a technical term / proper noun among the removed words
  *  - a number among the removed words
  *  - removal that amounts to (most of) a full original sentence/bullet
- * ...unless every removed word is pure filler per the deletion allowlist.
+ * ...unless every removed word is pure filler per the deletion allowlist, or
+ * the removal is (after stripping any matched intent/values clause)
+ * entirely filler/empty.
  */
 export function shouldWarnOnRemoval(originalText: string, removedText: string): boolean {
   const removedTrimmed = removedText.trim();
   if (!removedTrimmed) return false;
 
-  const removedWords = wordsOf(removedTrimmed);
+  // Strip out just the matched intent/values clause substring (if any) —
+  // any OTHER factual content in the removed text still gets checked below,
+  // rather than exempting the whole removal just because a clause appears
+  // somewhere in it.
+  const effectiveRemoved = stripIntentValuesClause(removedTrimmed);
+  if (!effectiveRemoved) return false;
+
+  const removedWords = wordsOf(effectiveRemoved);
   if (removedWords.length === 0) return false;
 
-  if (isIntentValuesClause(removedTrimmed)) return false;
   if (isFillerOnlyRemoval(removedWords)) return false;
 
-  const hasProperNoun = PROPER_NOUN_RE.test(removedTrimmed.replace(/^[A-Z][a-zA-Z0-9+.#-]*\s*/, (m) => {
-    // Don't let a capitalized FIRST word of the removed text (likely just
-    // sentence-initial capitalization, not a proper noun) trigger a warning
-    // on its own — lowercase it before testing so only genuinely
-    // mid-text capitalized words count.
-    return m.length > 0 ? m.charAt(0).toLowerCase() + m.slice(1) : m;
-  }));
+  let hasProperNoun = false;
+  PROPER_NOUN_RE.lastIndex = 0;
+  let nounMatch: RegExpExecArray | null;
+  while ((nounMatch = PROPER_NOUN_RE.exec(effectiveRemoved)) !== null) {
+    const word = nounMatch[0];
+    if (!isSentenceInitialInOriginal(word, originalText)) {
+      hasProperNoun = true;
+      break;
+    }
+  }
   PROPER_NOUN_RE.lastIndex = 0;
   if (hasProperNoun) return true;
 
-  const hasNumber = NUMBER_RE.test(removedTrimmed);
+  const hasNumber = NUMBER_RE.test(effectiveRemoved);
   NUMBER_RE.lastIndex = 0;
   if (hasNumber) return true;
 
@@ -324,7 +472,7 @@ export function shouldWarnOnRemoval(originalText: string, removedText: string): 
   const substantiveRemoved = removedWords.filter(
     (w) => !STOPWORDS.has(w) && !SUBJECTIVE_FILLER_WORDS.has(w) && !BANNED_PHRASES.includes(w)
   );
-  if (substantiveRemoved.length >= 3) return true;
+  if (substantiveRemoved.length >= 2) return true;
 
   return false;
 }
@@ -433,4 +581,54 @@ export function extractOriginalSectionText(originalText: string, sectionTitle: s
     bodyLines.push(lines[i]);
   }
   return bodyLines.join("\n");
+}
+
+export interface MissingOriginalSection {
+  /** The literal heading line text as it appeared in the original resume. */
+  heading: string;
+  /** The body content of the section (everything until the next heading). */
+  content: string;
+  /** Suggested index to insert this section at within the tailored sections array, to best preserve original ordering. */
+  insertIndex: number;
+}
+
+/**
+ * Finds whole original sections that have NO tailored counterpart at all —
+ * a heading present in the original resume that doesn't match any tailored
+ * section's title (by alias). These are rendered as fully-deleted section
+ * blocks with a Restore option, rather than being silently dropped.
+ */
+export function findMissingOriginalSections(
+  originalText: string,
+  tailoredSections: { title: string }[]
+): MissingOriginalSection[] {
+  const lines = originalText.split(/\r?\n/);
+  const headings: { heading: string; canonical: string; lineIndex: number }[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const canonical = isHeadingLine(lines[i].trim());
+    if (canonical) headings.push({ heading: lines[i].trim(), canonical, lineIndex: i });
+  }
+  if (headings.length === 0) return [];
+
+  const tailoredAliasSets = tailoredSections.map((s) => aliasesFor(s.title));
+
+  const missing: MissingOriginalSection[] = [];
+  let matchedSoFar = 0;
+  for (let hi = 0; hi < headings.length; hi++) {
+    const { heading, canonical, lineIndex } = headings[hi];
+    const aliasGroup = Object.values(SECTION_HEADING_ALIASES).find((aliases) => aliases.includes(canonical)) ?? [
+      canonical,
+    ];
+    const hasTailoredMatch = tailoredAliasSets.some((aliases) => aliases.some((a) => aliasGroup.includes(a)));
+    if (hasTailoredMatch) {
+      matchedSoFar++;
+      continue;
+    }
+    const bodyStart = lineIndex + 1;
+    const bodyEnd = hi + 1 < headings.length ? headings[hi + 1].lineIndex : lines.length;
+    const content = lines.slice(bodyStart, bodyEnd).join("\n").trim();
+    if (content.length === 0) continue;
+    missing.push({ heading, content, insertIndex: matchedSoFar });
+  }
+  return missing;
 }

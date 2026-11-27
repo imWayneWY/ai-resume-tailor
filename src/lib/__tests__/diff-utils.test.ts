@@ -6,13 +6,27 @@ import {
   shouldWarnOnRemoval,
   extractOriginalSectionText,
   similarity,
+  findUnmatchedOriginalIndices,
+  findMissingOriginalSections,
+  groupTailoredIndicesByOriginal,
+  replaceUnitSpan,
+  replaceUnitsSpan,
+  insertUnitAfter,
 } from "../diff-utils";
 
 describe("splitIntoUnits", () => {
   it("splits bullet lines on the leading marker", () => {
     const units = splitIntoUnits("• Built the thing\n• Shipped the other thing");
     expect(units).toHaveLength(2);
-    expect(units[0]).toEqual({ raw: "• Built the thing", text: "Built the thing", isBullet: true });
+    expect(units[0]).toMatchObject({ raw: "• Built the thing", text: "Built the thing", isBullet: true });
+  });
+
+  it("preserves terminal punctuation when splitting prose into sentences", () => {
+    const units = splitIntoUnits("I have experience with TypeScript. Currently building things.");
+    expect(units).toHaveLength(2);
+    expect(units[0].text).toBe("I have experience with TypeScript.");
+    expect(units[0].raw).toBe("I have experience with TypeScript.");
+    expect(units[1].text).toBe("Currently building things.");
   });
 
   it("splits prose into sentences", () => {
@@ -76,12 +90,21 @@ describe("alignUnits + diffAlignedPair — acceptance criteria", () => {
     expect(diff.warn).toBe(true);
   });
 
-  it("does NOT warn when only filler/subjective content is removed (Passionate about building great products)", () => {
-    const warn = shouldWarnOnRemoval(
-      "Passionate about building great products.",
-      "Passionate about building great products."
-    );
+  it("does NOT warn when only filler/subjective content is removed (Passionate, high-impact, seamless, dynamic)", () => {
+    const original = "Passionate, high-impact, seamless, dynamic engineer delivering software solutions.";
+    const removed = "Passionate, high-impact, seamless, dynamic";
+    const warn = shouldWarnOnRemoval(original, removed);
     expect(warn).toBe(false);
+  });
+
+  it("DOES warn when real factual content like 'component design' is removed, proving the filler list isn't overfit", () => {
+    const original = "Owned component design for the checkout flow.";
+    const revised = "Owned for the checkout flow.";
+    const originalUnits = splitIntoUnits(original);
+    const tailoredUnits = splitIntoUnits(revised);
+    const pairs = alignUnits(originalUnits, tailoredUnits);
+    const diff = diffAlignedPair(pairs[0]);
+    expect(diff.warn).toBe(true);
   });
 
   it("does NOT warn when an intent/values clause is removed (supporting Microsoft's commitment to inclusive design)", () => {
@@ -151,3 +174,106 @@ describe("similarity", () => {
     expect(similarity("apple banana", "car truck")).toBe(0);
   });
 });
+
+describe("MUST FIX 1 — fully deleted original bullets/sections are visible and restorable", () => {
+  it("renders an unmatched original bullet as a deleted row, and restoring it puts it back in original order", () => {
+    const originalSection = "• First bullet about Alpha.\n• Second bullet about Beta.\n• Third bullet about Gamma.";
+    const tailoredSection = "• First bullet about Alpha.\n• Second bullet about Beta.";
+
+    const originalUnits = splitIntoUnits(originalSection);
+    const tailoredUnits = splitIntoUnits(tailoredSection);
+    const pairs = alignUnits(originalUnits, tailoredUnits);
+    const unmatched = findUnmatchedOriginalIndices(originalUnits, pairs);
+    expect(unmatched).toEqual([2]);
+
+    const deletedUnit = originalUnits[unmatched[0]];
+    expect(deletedUnit.text).toContain("Gamma");
+
+    // Restoring: insert after the last matched tailored unit (index 1).
+    const afterUnit = tailoredUnits[1];
+    const restored = insertUnitAfter(tailoredSection, afterUnit, deletedUnit.raw);
+    const restoredUnits = splitIntoUnits(restored);
+    expect(restoredUnits).toHaveLength(3);
+    expect(restoredUnits[2].text).toContain("Gamma");
+    expect(restoredUnits[0].text).toContain("Alpha");
+    expect(restoredUnits[1].text).toContain("Beta");
+  });
+
+  it("finds whole original sections missing from the tailored sections array", () => {
+    const original =
+      "Summary\nBuilt things.\n\nCertifications\nAWS Certified Solutions Architect\n\nSkills\nJavaScript, TypeScript";
+    const tailoredSections = [
+      { title: "Summary" },
+      { title: "Skills" },
+    ];
+    const missing = findMissingOriginalSections(original, tailoredSections);
+    expect(missing).toHaveLength(1);
+    expect(missing[0].heading.toLowerCase()).toBe("certifications");
+    expect(missing[0].content).toContain("AWS Certified Solutions Architect");
+    expect(missing[0].insertIndex).toBe(1);
+  });
+});
+
+describe("MUST FIX 2 — revert/edit preserves exact formatting via targeted span replace", () => {
+  it("reverting one sentence in a 3-sentence Summary leaves the other two sentences and surrounding punctuation/whitespace byte-for-byte unchanged", () => {
+    const content = "Experienced engineer with 8 years. Built scalable systems. Shipped great products.";
+    const units = splitIntoUnits(content);
+    expect(units).toHaveLength(3);
+    // Revert the middle sentence to some original text.
+    const originalText = "Built robust, scalable distributed systems.";
+    const reverted = replaceUnitSpan(content, units[1], originalText);
+    expect(reverted).toBe(
+      "Experienced engineer with 8 years. Built robust, scalable distributed systems. Shipped great products."
+    );
+  });
+
+  it("reverting one bullet in a multi-entry Experience section preserves blank lines and other bullets byte-for-byte", () => {
+    const content =
+      "ACME Corp — Senior Engineer\n• Built the checkout flow.\n• Shipped the payments API.\n\nWidgetCo — Engineer\n• Maintained the legacy system.";
+    const units = splitIntoUnits(content);
+    const bulletUnit = units.find((u) => u.text.includes("checkout"));
+    expect(bulletUnit).toBeDefined();
+    const reverted = replaceUnitSpan(content, bulletUnit!, "Owned the entire checkout flow end-to-end.");
+    expect(reverted).toBe(
+      "ACME Corp — Senior Engineer\n• Owned the entire checkout flow end-to-end.\n• Shipped the payments API.\n\nWidgetCo — Engineer\n• Maintained the legacy system."
+    );
+  });
+});
+
+describe("MUST FIX 3 — reverting a split bullet collapses the whole group, no duplication", () => {
+  it("reverting either half of a split bullet (via group-level revert) leaves exactly one bullet matching the original", () => {
+    const original = "• Built and deployed the checkout service used by 10,000 customers daily.";
+    const revised =
+      "• Built the checkout service.\n• Deployed it to production, used by 10,000 customers daily.";
+
+    const originalUnits = splitIntoUnits(original);
+    const tailoredUnits = splitIntoUnits(revised);
+    const pairs = alignUnits(originalUnits, tailoredUnits);
+    const groups = groupTailoredIndicesByOriginal(pairs);
+    const groupIndices = groups.get(0)!;
+    expect(groupIndices).toEqual([0, 1]);
+
+    const groupUnits = groupIndices.map((i) => tailoredUnits[i]);
+    const result = replaceUnitsSpan(revised, groupUnits, originalUnits[0].text);
+    const resultUnits = splitIntoUnits(result);
+    expect(resultUnits).toHaveLength(1);
+    expect(resultUnits[0].text).toBe(originalUnits[0].text);
+  });
+});
+
+describe("ALSO FIX — hyphenated filler tokens normalize as one token", () => {
+  it("treats 'high-impact' as a single token so it matches the filler-word check", () => {
+    const original = "Delivered high-impact improvements to the platform.";
+    const removed = "high-impact";
+    expect(shouldWarnOnRemoval(original, removed)).toBe(false);
+  });
+});
+
+describe("ALSO FIX — proper-noun sentence-initial check uses position in ORIGINAL text, not the removed fragment", () => {
+  it("still warns on a removed mid-sentence proper noun even when it is the first word of the removed chunk", () => {
+    const original = "Built the backend using GraphQL and Node.js for the API layer.";
+    const removed = "GraphQL and";
+    expect(shouldWarnOnRemoval(original, removed)).toBe(true);
+  });
+});
+

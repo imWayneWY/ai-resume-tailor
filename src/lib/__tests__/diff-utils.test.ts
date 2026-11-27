@@ -404,3 +404,113 @@ describe("ALSO FIX — insertUnitAfter uses newline separator for bullets even i
   });
 });
 
+describe("MUST FIX 2 — splitIntoUnits does not fold entry headers into the preceding bullet as a continuation", () => {
+  it("produces 2 bullet units + 1 separate header unit for a bullet, an uppercase company/role header with a date range, then another bullet", () => {
+    const content =
+      "• ...inclusive design\nPLAYGON GAME INC., VANCOUVER, SR FRONTEND DEVELOPER (2021 - 2023)\n• Shipped the new design system.";
+    const units = splitIntoUnits(content);
+    expect(units).toHaveLength(3);
+    expect(units[0].isBullet).toBe(true);
+    expect(units[0].text).toBe("...inclusive design");
+    expect(units[1].isBullet).toBe(false);
+    expect(units[1].text).toBe("PLAYGON GAME INC., VANCOUVER, SR FRONTEND DEVELOPER (2021 - 2023)");
+    expect(units[2].isBullet).toBe(true);
+    expect(units[2].text).toBe("Shipped the new design system.");
+  });
+});
+
+describe("MUST FIX 1 — split adoption clears the previous owner's assignment instead of leaving 3 units pointing at one original", () => {
+  it("(a) when a split pair takes over an original from an unrelated owner X, no originalIndex maps to 3+ tailored units, and reverting the split group never touches X's own tailored text", () => {
+    const originalSection =
+      "• Migrated the billing service to a brand new cloud platform for better scalability.\n• Owned the quarterly reporting dashboard refresh end to end.";
+    // X (unit 2): its own distinct, recognizable rewrite of original bullet 0
+    // — a decent but partial paraphrase, so step 1's greedy one-to-one pass
+    // assigns X -> original bullet 0.
+    // t (unit 0) / t+1 (unit 1): adjacent tailored units that, individually,
+    // are each weaker/partial matches against bullet 0 than X (so X wins the
+    // one-to-one assignment first), but whose COMBINED text covers
+    // substantially more of bullet 0's words than X's single score —
+    // triggering the split-adoption takeover in step 2, which must then
+    // release X rather than leaving X still pointing at bullet 0.
+    const tailoredSection =
+      "• Migrated the billing service\n• to a brand new cloud platform for better scalability.\n• Billing service moved onto newer cloud infrastructure.";
+    const originalUnits = splitIntoUnits(originalSection);
+    const tailoredUnits = splitIntoUnits(tailoredSection);
+    const pairs = alignUnits(originalUnits, tailoredUnits);
+    console.log(JSON.stringify(pairs));
+    const groups = groupTailoredIndicesByOriginal(pairs);
+    groups.forEach((indices) => {
+      expect(indices.length).toBeLessThanOrEqual(2);
+    });
+    // Find whichever group ended up with 2 tailored units (the split pair)
+    // and revert it; unit 2's own tailored text (X) must survive untouched.
+    let reverted = tailoredSection;
+    groups.forEach((indices, originalIndex) => {
+      if (indices.length === 2) {
+        const groupUnits = indices.map((i) => tailoredUnits[i]);
+        reverted = replaceUnitsSpan(tailoredSection, groupUnits, originalUnits[originalIndex].text);
+      }
+    });
+    expect(reverted).toContain("Billing service moved onto newer cloud infrastructure.");
+  });
+
+  it("(b) a tailored unit that's a legitimate rewrite of a DIFFERENT original with a solid score stays aligned to its own match and isn't stolen into an unrelated split", () => {
+    const originalSection =
+      "• Built the checkout service from scratch.\n• Optimized database query performance significantly.";
+    // t+1 ("Optimized database queries for performance.") is a solid,
+    // legitimate rewrite of original bullet 1 — it must stay aligned there,
+    // not get stolen into a split against bullet 0 just because an adjacent
+    // unrelated unit before it might nominally combine with it.
+    const tailoredSection =
+      "• Built checkout.\n• service from scratch rebuilt.\n• Optimized database queries for performance.";
+    const originalUnits = splitIntoUnits(originalSection);
+    const tailoredUnits = splitIntoUnits(tailoredSection);
+    const pairs = alignUnits(originalUnits, tailoredUnits);
+    const unmatched = findUnmatchedOriginalIndices(originalUnits, pairs);
+    // original bullet 1 (the database-performance bullet) must have a real
+    // tailored counterpart — it must NOT show up as a false "deleted" row.
+    expect(unmatched).not.toContain(1);
+    const pairForLastUnit = pairs[pairs.length - 1];
+    expect(pairForLastUnit.originalIndex).toBe(1);
+  });
+});
+
+describe("ALSO FIX — replaceUnitsSpan non-contiguous fallback consumes one adjacent newline instead of leaving a blank line", () => {
+  it("blanking a middle grouped unit during a non-contiguous group revert leaves no double-blank-line artifact", () => {
+    const content = "• First bullet here.\n• Unrelated bullet in between.\n• Second bullet here.";
+    const units = splitIntoUnits(content);
+    // Group units 0 and 2 (non-contiguous — unit 1 sits between them), as
+    // if they were a split pair whose shared original is being reverted to
+    // a single combined bullet.
+    const groupUnits = [units[0], units[2]];
+    const result = replaceUnitsSpan(content, groupUnits, "Combined bullet text.");
+    expect(result).not.toMatch(/\n\s*\n/);
+    expect(result).toContain("Unrelated bullet in between.");
+    expect(result).toContain("Combined bullet text.");
+  });
+});
+
+describe("ALSO FIX — INTENT_VALUES_CLAUSE_RE allowlist no longer exempts domain-specific words", () => {
+  it("'fast-paced startup environment' removal does NOT warn (still exempted filler)", () => {
+    const original = "Delivered features in a fast-paced startup environment under tight deadlines.";
+    const revised = "Delivered features under tight deadlines.";
+    const originalUnits = splitIntoUnits(original);
+    const tailoredUnits = splitIntoUnits(revised);
+    const pairs = alignUnits(originalUnits, tailoredUnits);
+    const diff = diffAlignedPair(pairs[0]);
+    expect(diff.warn).toBe(false);
+  });
+
+  it("'fast-paced fintech environment' removal DOES still warn (fintech is domain-specific factual content)", () => {
+    const original =
+      "Delivered payment features in a fast-paced fintech environment supporting millions of transactions.";
+    const revised = "Delivered payment features supporting millions of transactions.";
+    const originalUnits = splitIntoUnits(original);
+    const tailoredUnits = splitIntoUnits(revised);
+    const pairs = alignUnits(originalUnits, tailoredUnits);
+    const diff = diffAlignedPair(pairs[0]);
+    expect(diff.warn).toBe(true);
+  });
+});
+
+

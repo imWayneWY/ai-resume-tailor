@@ -61,22 +61,22 @@ function renderBold(text: string, keyPrefix = ""): React.ReactNode[] {
     .filter((n): n is React.ReactElement => n !== null);
 }
 
-/** Renders word-diff ops with strikethrough/highlight styling, applying bold markup within each op's rendered text. */
+/** Renders word-diff ops with strikethrough/highlight styling. Bold styling is applied to the WHOLE unit (via the wrapping `<strong>` from the caller when `isBold`), not per-op — so a bold header that changes never leaves raw, unmatched `**` markers split across ops. */
 function DiffOps({ ops }: { ops: WordDiffOp[] }) {
   return (
     <>
       {ops.map((op, i) => {
-        if (op.type === "equal") return <span key={i}>{renderBold(op.value, `eq${i}-`)}</span>;
+        if (op.type === "equal") return <span key={i}>{op.value}</span>;
         if (op.type === "remove") {
           return (
             <span key={i} className="text-muted line-through decoration-error-text/70">
-              {renderBold(op.value, `rm${i}-`)}
+              {op.value}
             </span>
           );
         }
         return (
           <span key={i} className="rounded-sm bg-success-bg text-success-text">
-            {renderBold(op.value, `ad${i}-`)}
+            {op.value}
           </span>
         );
       })}
@@ -179,7 +179,19 @@ function UnitRow({ diff, isBullet, showChanges, reason, isAdded, onRevert, onEdi
         className="w-full whitespace-pre-wrap rounded-sm text-left text-sm leading-relaxed hover:bg-surface"
       >
         {isBullet && <span className="absolute left-0">•</span>}
-        {showChanges && isChanged ? <DiffOps ops={diff.ops} /> : renderBold(diff.tailoredText)}
+        {diff.isBold ? (
+          <strong className="font-semibold">
+            {showChanges && isChanged ? (
+              <DiffOps ops={diff.ops} />
+            ) : (
+              diff.tailoredText.trim().replace(/^\*\*([\s\S]+)\*\*$/, "$1")
+            )}
+          </strong>
+        ) : showChanges && isChanged ? (
+          <DiffOps ops={diff.ops} />
+        ) : (
+          renderBold(diff.tailoredText)
+        )}
         {showChanges && isAdded && (
           <span className="ml-1 rounded-sm bg-accent/10 px-1 text-[10px] font-medium uppercase tracking-wide text-accent">
             added

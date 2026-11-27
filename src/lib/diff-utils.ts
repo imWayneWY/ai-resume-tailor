@@ -90,7 +90,7 @@ const STOPWORDS = new Set([
 // when they happen to reference a company/proper noun — the clause itself
 // states intent/values, not a verifiable fact about scope of work.
 const INTENT_VALUES_CLAUSE_RE =
-  /\b(supporting|reflecting|aligned with|in line with)\b.{0,40}\b(commitment|values|culture|mission|vision)\b(\s+(to|for|of|toward|towards)\s+[^,.;]*)?|\bin an? (fast-paced|dynamic|collaborative)(\s+\w+)? environment\b|\bto (deliver|provide|create) an? \w+ (user )?experience\b/i;
+  /\b(supporting|reflecting|aligned with|in line with)\b.{0,40}\b(commitment|values|culture|mission|vision)\b(\s+(to|for|of|toward|towards)\s+[^,.;]*)?|\bin an? (fast-paced|dynamic|collaborative)(\s+(startup|work|team))? environment\b|\bto (deliver|provide|create) an? \w+ (user )?experience\b/i;
 
 /**
  * Strips the FIRST matched intent/values clause substring out of the removed
@@ -146,6 +146,64 @@ export interface ContentUnit {
 
 const BULLET_LINE_RE = /^[•\-*]\s+/;
 
+// Heuristics for deciding whether a non-bullet line immediately following a
+// bullet is a genuine wrapped continuation (fold it in) vs. a brand-new
+// entry/section header (do NOT fold it) — see splitIntoUnits.
+const YEAR_OR_DATE_RANGE_RE = /\b(19|20)\d{2}\b|\(\s*\d{4}\s*-\s*(present|\d{4})\s*\)/i;
+const CONTINUATION_HEADING_TERMS = new Set([
+  "summary",
+  "profile",
+  "objective",
+  "experience",
+  "work experience",
+  "work history",
+  "employment",
+  "education",
+  "skills",
+  "technical skills",
+  "technologies",
+  "tech stack",
+  "core competencies",
+  "projects",
+  "certifications",
+  "certificates",
+  "awards",
+  "publications",
+  "volunteer",
+  "volunteering",
+  "languages",
+  "interests",
+  "references",
+]);
+
+function isMostlyUppercase(line: string): boolean {
+  const letters = line.match(/[a-zA-Z]/g) || [];
+  if (letters.length === 0) return false;
+  const upper = letters.filter((c) => c === c.toUpperCase() && c !== c.toLowerCase());
+  return upper.length / letters.length > 0.5;
+}
+
+/**
+ * Decides whether `candidate` (a non-bullet line immediately following
+ * `prevLine`, the bullet or last-folded continuation line) looks like a
+ * genuine wrapped continuation of `prevLine` rather than a new entry/section
+ * header. All checks must pass for folding to be allowed.
+ */
+function looksLikeContinuation(prevLine: string, candidate: string): boolean {
+  const prevTrimmed = prevLine.trim();
+  if (/[.!?:]$/.test(prevTrimmed)) return false;
+  const candTrimmed = candidate.trim();
+  if (candTrimmed.length === 0) return false;
+  if (candTrimmed.startsWith("**")) return false;
+  if (isMostlyUppercase(candTrimmed)) return false;
+  if (YEAR_OR_DATE_RANGE_RE.test(candTrimmed)) return false;
+  const headingCandidate = candTrimmed.replace(/:\s*$/, "").trim().toLowerCase();
+  if (CONTINUATION_HEADING_TERMS.has(headingCandidate)) return false;
+  const firstChar = candTrimmed.charAt(0);
+  if (firstChar.toLowerCase() === firstChar.toUpperCase()) return false; // not a letter
+  return firstChar === firstChar.toLowerCase();
+}
+
 /**
  * Splits section content into comparable units: lines starting with a
  * bullet marker become bullets; everything else is treated as prose and
@@ -184,11 +242,14 @@ export function splitIntoUnits(content: string): ContentUnit[] {
       // (no blank line in between)? If so, fold it into this bullet unit.
       let endLineIndex = li;
       const continuationTexts: string[] = [];
+      let prevLine = line;
       for (let nj = li + 1; nj < lines.length; nj++) {
         const nextTrimmed = lines[nj].trim();
         if (nextTrimmed.length === 0 || BULLET_LINE_RE.test(nextTrimmed)) break;
+        if (!looksLikeContinuation(prevLine, lines[nj])) break;
         continuationTexts.push(nextTrimmed);
         endLineIndex = nj;
+        prevLine = lines[nj];
       }
       const spanStart = lineStarts[li] + (lines[li].length - lines[li].trimStart().length);
       const lastLine = lines[endLineIndex];
@@ -260,7 +321,21 @@ export function replaceUnitsSpan(content: string, units: ContentUnit[], newText:
   for (let i = sorted.length - 1; i >= 0; i--) {
     const u = sorted[i];
     const replacement = i === 0 ? newRaw : "";
-    result = result.slice(0, u.start) + replacement + result.slice(u.start + u.raw.length);
+    const spanEnd = u.start + u.raw.length;
+    if (replacement === "") {
+      // Avoid leaving an orphaned blank line behind: consume one adjacent
+      // newline — prefer a trailing one immediately after the span, else a
+      // leading one immediately before it.
+      if (result[spanEnd] === "\n") {
+        result = result.slice(0, u.start) + result.slice(spanEnd + 1);
+      } else if (result[u.start - 1] === "\n") {
+        result = result.slice(0, u.start - 1) + result.slice(spanEnd);
+      } else {
+        result = result.slice(0, u.start) + result.slice(spanEnd);
+      }
+    } else {
+      result = result.slice(0, u.start) + replacement + result.slice(spanEnd);
+    }
   }
   return result;
 }
@@ -419,11 +494,14 @@ export function alignUnits(originalUnits: ContentUnit[], tailoredUnits: ContentU
       const combinedScore = similarity(originalUnits[o].text, combinedText);
       if (combinedScore < MIN_SPLIT_COMBINED_SIMILARITY) continue;
       // Only adopt tailored units into the split if doing so doesn't
-      // steal a BETTER-scoring assignment they already have elsewhere (to
-      // a DIFFERENT original).
+      // steal a decent, independent assignment they already have
+      // elsewhere (to a DIFFERENT original) — unless that assignment is
+      // weak enough (below the combined-adoption threshold) to be a safe
+      // give-up. A solid independent match (>= threshold) to a different
+      // original must NOT be stolen into this split.
       const tScore = assignedOriginal.get(t) !== o ? assignedScore.get(t) ?? -1 : -1;
       const t1Score = assignedOriginal.get(t + 1) !== o ? assignedScore.get(t + 1) ?? -1 : -1;
-      if (tScore > combinedScore || t1Score > combinedScore) continue;
+      if (tScore >= MIN_SPLIT_COMBINED_SIMILARITY || t1Score >= MIN_SPLIT_COMBINED_SIMILARITY) continue;
       // Don't steal this original from a DIFFERENT adjacent pair that
       // already has a stronger combined claim on it.
       const existingOwnerT = assignedOriginal.get(t) === o ? t : undefined;
@@ -435,7 +513,17 @@ export function alignUnits(originalUnits: ContentUnit[], tailoredUnits: ContentU
         const owner = Array.from(assignedOriginal.entries()).find(([, oi]) => oi === o)?.[0];
         const ownerScore = owner !== undefined ? assignedScore.get(owner) ?? -1 : -1;
         if (ownerScore >= combinedScore) continue;
-        if (owner !== undefined) usedOriginals.delete(o);
+        if (owner !== undefined) {
+          // The split pair is taking over `o` from its previous owner X —
+          // X must NOT keep pointing at `o` (which now belongs to the
+          // split pair), or `o` would end up with 3 tailored units mapped
+          // to it, causing group-revert to blank X's unrelated content.
+          // X becomes unmatched; a later pass could re-match it, but
+          // unmatched (rendered as a plain "added" unit) is a safe outcome.
+          usedOriginals.delete(o);
+          assignedOriginal.delete(owner);
+          assignedScore.delete(owner);
+        }
       }
       // Release any originals these two previously claimed (they're
       // being reassigned to the split original instead).
@@ -615,10 +703,29 @@ export interface UnitDiff {
   ops: WordDiffOp[];
   changed: boolean;
   warn: boolean;
+  /** Whether the unit (original and/or tailored raw text) is a bold `**...**`-wrapped header. Applied to the unit as a whole, not per diff-op, so a changed bold header always renders fully bold. */
+  isBold: boolean;
+}
+
+const BOLD_WRAPPER_RE = /^\*\*([\s\S]+)\*\*$/;
+
+/** Strips a leading+trailing `**...**` wrapper from text, if present. */
+function stripBoldWrapper(text: string): string {
+  const m = BOLD_WRAPPER_RE.exec(text.trim());
+  return m ? m[1] : text;
 }
 
 export function diffAlignedPair(pair: AlignedPair): UnitDiff {
-  const ops = pair.originalIndex === -1 ? [{ type: "add" as const, value: pair.tailoredText }] : wordDiff(pair.originalText, pair.tailoredText);
+  const originalIsBold = BOLD_WRAPPER_RE.test(pair.originalText.trim());
+  const tailoredIsBold = BOLD_WRAPPER_RE.test(pair.tailoredText.trim());
+  const isBold = originalIsBold || tailoredIsBold;
+  // Strip the `**` markers BEFORE diffing so a bold marker pair split
+  // across diff ops (e.g. by a word-boundary change inside the header)
+  // never leaves raw, unmatched `**` characters in the rendered ops —
+  // bold styling is applied to the whole unit instead (see isBold above).
+  const originalPlain = isBold ? stripBoldWrapper(pair.originalText) : pair.originalText;
+  const tailoredPlain = isBold ? stripBoldWrapper(pair.tailoredText) : pair.tailoredText;
+  const ops = pair.originalIndex === -1 ? [{ type: "add" as const, value: tailoredPlain }] : wordDiff(originalPlain, tailoredPlain);
   const changed = ops.some((op) => op.type !== "equal");
   const removedText = ops
     .filter((op) => op.type === "remove")
@@ -633,6 +740,7 @@ export function diffAlignedPair(pair: AlignedPair): UnitDiff {
     ops,
     changed,
     warn,
+    isBold,
   };
 }
 

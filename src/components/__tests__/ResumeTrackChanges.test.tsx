@@ -69,6 +69,27 @@ describe("MUST FIX 4 — bold markup renders as <strong>, not raw asterisks", ()
     const strongEl = screen.getByText("MICROSOFT, VANCOUVER, SDE2 (2023 - PRESENT)");
     expect(strongEl.tagName.toLowerCase()).toBe("strong");
   });
+
+  it("renders a changed bold header fully bold with no raw asterisks visible in Show-changes mode (title changes inside bold wrapper)", () => {
+    const sections = [
+      {
+        title: "Experience",
+        content: "**MICROSOFT, VANCOUVER, Senior SDE2 (2023 - PRESENT)**",
+      },
+    ];
+    const originalResume = "Experience\n**MICROSOFT, VANCOUVER, SDE2 (2023 - PRESENT)**";
+
+    render(
+      <ResumeTrackChanges sections={sections} originalResume={originalResume} onSectionsChange={() => {}} />
+    );
+
+    // No raw, unmatched ** markers anywhere in the rendered output.
+    expect(screen.queryByText(/\*\*/)).not.toBeInTheDocument();
+    // The whole header unit is still rendered with bold styling.
+    const container = screen.getByText("MICROSOFT,", { exact: false });
+    const strongAncestor = container.closest("strong");
+    expect(strongAncestor).not.toBeNull();
+  });
 });
 
 describe("MUST FIX 5 — fallback alignment pool suppresses deleted-row rendering", () => {

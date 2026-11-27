@@ -360,6 +360,51 @@ describe("MUST FIX 3 — punctuation-only changes don't trigger a false warning"
   });
 });
 
+describe("ROUND 6 SMALL — punctuated/compound technical terms stay intact across unrelated word changes", () => {
+  // Protects against the word/punctuation tokenizer (normalizeWords /
+  // wordDiff) splitting a compound, punctuated technical term like
+  // "Node.js" into fragments that individually look like a removal —
+  // mirrors the earlier "WeChat Pay, and Alipay" fix, but for terms whose
+  // punctuation is semantically part of the token itself rather than
+  // separating words.
+  it("'Node.js' stays an unchanged 'equal' token when an unrelated word nearby changes, and produces warn: false", () => {
+    // Use a non-proper-noun, non-fact-bearing word swap ("rewrote" ->
+    // "updated") so this test isolates the tokenization behavior itself —
+    // swapping one named technology for another (e.g. Express -> Koa) would
+    // legitimately warn via the proper-noun heuristic, which is correct
+    // behavior but not what this test is checking.
+    const original = "Built the backend service using Node.js and rewrote the API layer.";
+    const revised = "Built the backend service using Node.js and updated the API layer.";
+    const originalUnits = splitIntoUnits(original);
+    const tailoredUnits = splitIntoUnits(revised);
+    const pairs = alignUnits(originalUnits, tailoredUnits);
+    const ops = wordDiff(originalUnits[0].text, tailoredUnits[0].text);
+    // "Node.js" must appear as a single intact "equal" op, never split into
+    // "Node" / "." / "js" fragments or reported as removed+added.
+    const nodeJsEqualOp = ops.find((op) => op.type === "equal" && op.value.includes("Node.js"));
+    expect(nodeJsEqualOp).toBeDefined();
+    const nodeJsRemoved = ops.some((op) => op.type === "remove" && op.value.includes("Node"));
+    expect(nodeJsRemoved).toBe(false);
+    const diff = diffAlignedPair(pairs[0]);
+    expect(diff.warn).toBe(false);
+  });
+
+  it("'C#' stays intact and 'e-commerce' stays intact when an unrelated word nearby changes, producing warn: false", () => {
+    const original = "Led the C# team building the e-commerce checkout platform for retail clients.";
+    const revised = "Led the C# team building the e-commerce checkout platform for enterprise clients.";
+    const originalUnits = splitIntoUnits(original);
+    const tailoredUnits = splitIntoUnits(revised);
+    const pairs = alignUnits(originalUnits, tailoredUnits);
+    const ops = wordDiff(originalUnits[0].text, tailoredUnits[0].text);
+    const csharpEqualOp = ops.find((op) => op.type === "equal" && op.value.includes("C#"));
+    expect(csharpEqualOp).toBeDefined();
+    const ecommerceEqualOp = ops.find((op) => op.type === "equal" && op.value.includes("e-commerce"));
+    expect(ecommerceEqualOp).toBeDefined();
+    const diff = diffAlignedPair(pairs[0]);
+    expect(diff.warn).toBe(false);
+  });
+});
+
 describe("ALSO FIX — INTENT_VALUES_CLAUSE_RE tolerance and new alternative", () => {
   it("does NOT warn when 'in a fast-paced STARTUP environment' is removed (extra word tolerance)", () => {
     const original = "Delivered features in a fast-paced startup environment under tight deadlines.";
@@ -534,31 +579,75 @@ describe("ROUND 5 MUST FIX 1 — CRLF offsets no longer drift", () => {
   });
 });
 
-describe("ROUND 5 MUST FIX 4 — split-adoption ties never trigger a takeover", () => {
-  it("does NOT take over when the combined split score exactly equals the existing owner's score", () => {
-    // Construct original + tailored units where the single-match score and
-    // the combined-split score come out numerically equal.
-    const originalSection = "• alpha beta gamma delta";
-    // X: a single tailored unit that matches "alpha beta gamma delta" with
-    // similarity exactly equal to what a split pair would combine to.
-    const tailoredSection = "• alpha beta gamma delta\n• unrelated filler\n• unrelated filler two";
+describe("ROUND 6 MUST FIX — split-adoption ties never trigger a takeover", () => {
+  it("does NOT take over the owner's original when the combined split score EXACTLY ties the owner's existing (fuzzy, non-exact) score", () => {
+    // Original bullet whose current owner X has a partial (non-exact) match:
+    // shared words {apple, banana, cherry} vs X's extra words {grape, kiwi} ->
+    // score = 3 / 7.
+    const originalSection = "• apple banana cherry date fig";
+    // X (index 0): single best match for the original above, score 3/7.
+    // filler (index 1): keeps X and the (t, t+1) pair non-adjacent.
+    // t (index 2) + t+1 (index 3): combined text also scores EXACTLY 3/7
+    // against the same original (shared {apple, banana, cherry}, extra
+    // {mango, lemon}) — a genuine numeric tie, not an exact-text match.
+    const tailoredSection =
+      "• apple banana cherry grape kiwi\n• zzz filler words only\n• apple banana\n• cherry mango lemon";
     const originalUnits = splitIntoUnits(originalSection);
     const tailoredUnits = splitIntoUnits(tailoredSection);
     const pairs = alignUnits(originalUnits, tailoredUnits);
-    const groups = groupTailoredIndicesByOriginal(pairs);
-    // With only one true match (exact match, score 1.0) and no genuinely
-    // better split candidate, the single match must remain the sole owner —
-    // no group should end up with more than 1 unit mapped via a tie.
-    groups.forEach((indices) => {
-      if (indices.length > 1) {
-        // If grouped, it must be because of a strictly better combined
-        // score, never a tie — verify the single original owner's
-        // assignment wasn't disturbed by an equal-score split.
-        expect(indices.length).toBeLessThanOrEqual(2);
-      }
-    });
-    const originalOwnerPair = pairs.find((p) => p.tailoredIndex === 0);
-    expect(originalOwnerPair?.originalIndex).toBe(0);
+
+    // Sanity-check the tie actually exists as designed.
+    const ownerScore = similarity(originalUnits[0].text, tailoredUnits[0].text);
+    const combinedScore = similarity(
+      originalUnits[0].text,
+      `${tailoredUnits[2].text} ${tailoredUnits[3].text}`
+    );
+    expect(combinedScore).toBeCloseTo(ownerScore, 10);
+    expect(ownerScore).toBeLessThan(1); // confirm this is a fuzzy tie, not an exact match
+
+    // The owner (tailoredIndex 0) must still map to the original — a tie
+    // must never trigger a takeover.
+    const ownerPair = pairs.find((p) => p.tailoredIndex === 0);
+    expect(ownerPair?.originalIndex).toBe(0);
+    // The (t, t+1) pair must NOT have also been assigned to the same
+    // original via the tie.
+    const tPair = pairs.find((p) => p.tailoredIndex === 2);
+    const t1Pair = pairs.find((p) => p.tailoredIndex === 3);
+    expect(tPair?.originalIndex).not.toBe(0);
+    expect(t1Pair?.originalIndex).not.toBe(0);
+  });
+
+  it("does not steal a tailored unit with a solid independent match to its own original into an unrelated split", () => {
+    // o2: t+1's genuine own original, matched with a solid (above
+    // MIN_SPLIT_COMBINED_SIMILARITY) but non-exact score of 4/5 = 0.8.
+    // o: a DIFFERENT original that (t, t+1) combined matches EXACTLY
+    // (score 1.0) — deliberately higher than t+1's own 0.8 score, so the
+    // fix is genuinely exercised (not trivially passing because the split
+    // score happens to be lower).
+    const originalSection =
+      "• node service health check endpoint\n• billing export job node service health check";
+    const tailoredSection = "• billing export job\n• node service health check";
+    const originalUnits = splitIntoUnits(originalSection);
+    const tailoredUnits = splitIntoUnits(tailoredSection);
+    const pairs = alignUnits(originalUnits, tailoredUnits);
+
+    // Sanity-check the scenario: t+1's own match to o2 is solid but lower
+    // than the combined score against the unrelated o.
+    const ownScore = similarity(originalUnits[0].text, tailoredUnits[1].text);
+    const combinedScore = similarity(
+      originalUnits[1].text,
+      `${tailoredUnits[0].text} ${tailoredUnits[1].text}`
+    );
+    expect(ownScore).toBeGreaterThanOrEqual(0.3); // above MIN_SPLIT_COMBINED_SIMILARITY
+    expect(combinedScore).toBeGreaterThan(ownScore);
+
+    // t+1 (tailoredIndex 1) must STAY aligned to its own original o2 (index 0).
+    const t1Pair = pairs.find((p) => p.tailoredIndex === 1);
+    expect(t1Pair?.originalIndex).toBe(0);
+
+    // o2 must NOT show up as a false "deleted" row.
+    const unmatched = findUnmatchedOriginalIndices(originalUnits, pairs);
+    expect(unmatched).not.toContain(0);
   });
 });
 
@@ -627,6 +716,21 @@ describe("ROUND 5 SMALL — capitalized proper-noun wrapped continuations fold c
     expect(units).toHaveLength(3);
     expect(units[0].text).toBe("Built the checkout flow end to end.");
     expect(units[1].text).toBe("PLAYGON GAME INC, REMOTE, SENIOR ENGINEER (2021-2023)");
+  });
+
+  it("does NOT fold a standalone Title-Case company header (no date, no connector word) after a punctuation-less bullet (ROUND 6 tightening)", () => {
+    // The bullet ends with no terminal punctuation and does NOT end with a
+    // comma or a connector/preposition word, so the following Title-Case
+    // header line must NOT be folded into it even though it "lacks
+    // terminal punctuation" — that fallback was too broad and is now
+    // removed. The date/role appears on a THIRD, separate line.
+    const content =
+      "• Delivered accessible, inclusive design\nPlaygon Game Inc\nSenior Frontend Developer (2021 - 2023)\n• Next bullet here";
+    const units = splitIntoUnits(content);
+    expect(units).toHaveLength(4);
+    expect(units[0].text).toBe("Delivered accessible, inclusive design");
+    expect(units[1].text).toBe("Playgon Game Inc");
+    expect(units[2].text).toBe("Senior Frontend Developer (2021 - 2023)");
   });
 });
 

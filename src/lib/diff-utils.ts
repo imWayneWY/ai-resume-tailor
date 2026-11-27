@@ -150,6 +150,11 @@ const BULLET_LINE_RE = /^[•\-*]\s+/;
 // bullet is a genuine wrapped continuation (fold it in) vs. a brand-new
 // entry/section header (do NOT fold it) — see splitIntoUnits.
 const YEAR_OR_DATE_RANGE_RE = /\b(19|20)\d{2}\b|\(\s*\d{4}\s*-\s*(present|\d{4})\s*\)/i;
+// Connector/preposition words that, when ending the previous line, clearly
+// indicate the phrase continues onto the next (capitalized) line — used to
+// decide whether a capitalized candidate line is a genuine wrapped
+// continuation vs. a new entry/section header.
+const CONTINUATION_CONNECTOR_RE = /\b(and|across|with|for|to|in|on|using|via|including)$/i;
 const CONTINUATION_HEADING_TERMS = new Set([
   "summary",
   "profile",
@@ -210,7 +215,8 @@ function looksLikeContinuation(prevLine: string, candidate: string): boolean {
   // nouns ("Safari, Firefox, and mobile browsers"). The date-range,
   // mostly-uppercase, and heading-term checks above already guard against
   // folding an actual new entry/section header.
-  return prevTrimmed.endsWith(",") || !/[,.!?:]$/.test(prevTrimmed);
+  if (prevTrimmed.endsWith(",")) return true;
+  return CONTINUATION_CONNECTOR_RE.test(prevTrimmed);
 }
 
 /**
@@ -519,6 +525,7 @@ export function alignUnits(originalUnits: ContentUnit[], tailoredUnits: ContentU
       // original must NOT be stolen into this split.
       const tScore = assignedOriginal.get(t) !== o ? assignedScore.get(t) ?? -1 : -1;
       const t1Score = assignedOriginal.get(t + 1) !== o ? assignedScore.get(t + 1) ?? -1 : -1;
+      if (tScore >= MIN_SPLIT_COMBINED_SIMILARITY || t1Score >= MIN_SPLIT_COMBINED_SIMILARITY) continue;
       if (tScore >= combinedScore || t1Score >= combinedScore) continue;
       // Don't steal this original from a DIFFERENT adjacent pair that
       // already has a stronger combined claim on it.
@@ -530,7 +537,7 @@ export function alignUnits(originalUnits: ContentUnit[], tailoredUnits: ContentU
         // split's combined score beats that single match.
         const owner = Array.from(assignedOriginal.entries()).find(([, oi]) => oi === o)?.[0];
         const ownerScore = owner !== undefined ? assignedScore.get(owner) ?? -1 : -1;
-        if (ownerScore >= combinedScore) continue;
+        if (combinedScore <= ownerScore) continue;
         if (owner !== undefined) {
           // The split pair is taking over `o` from its previous owner X —
           // X must NOT keep pointing at `o` (which now belongs to the

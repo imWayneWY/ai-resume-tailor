@@ -107,6 +107,69 @@ function findReason(
   return bestScore > 0 ? best?.reason : undefined;
 }
 
+interface EmptySectionPlaceholderProps {
+  onSave: (text: string) => void;
+}
+
+/** Click-to-edit placeholder for a now-empty section — mirrors UnitRow's edit UI so the user can add content back without regenerating the whole resume. */
+function EmptySectionPlaceholder({ onSave }: EmptySectionPlaceholderProps) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+
+  if (editing) {
+    return (
+      <div className="mb-1">
+        <label htmlFor="empty-section-edit" className="sr-only">
+          Add section content
+        </label>
+        <textarea
+          id="empty-section-edit"
+          aria-label="Add section content"
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          rows={Math.max(2, Math.ceil(draft.length / 80))}
+          className="w-full resize-y rounded-md border border-accent bg-surface p-2 text-sm leading-relaxed focus:outline-none"
+        />
+        <div className="mt-1 flex gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              onSave(draft);
+              setDraft("");
+              setEditing(false);
+            }}
+            className="rounded-md bg-accent px-2 py-1 text-xs font-medium text-white hover:bg-accent-hover"
+          >
+            Save
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setDraft("");
+              setEditing(false);
+            }}
+            className="rounded-md border border-border px-2 py-1 text-xs font-medium hover:bg-surface"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => setEditing(true)}
+      data-testid="empty-section-placeholder"
+      className="mb-1 w-full rounded-sm text-left text-sm italic text-muted hover:bg-surface"
+    >
+      (empty)
+    </button>
+  );
+}
+
 interface UnitRowProps {
   diff: UnitDiff;
   isBullet: boolean;
@@ -416,6 +479,13 @@ export default function ResumeTrackChanges({
     onSectionsChange(nextSections);
   };
 
+  /** Inserts new content into a now-empty section (there's no existing unit/diff to attach to, so we just set the section's content directly). */
+  const addContentToEmptySection = (sectionIndex: number, text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    setSectionContent(sectionIndex, trimmed);
+  };
+
   return (
     <div className="rounded-lg border border-border bg-card p-6 shadow-sm sm:p-8">
       <div className="mb-4 flex items-center justify-between">
@@ -460,9 +530,7 @@ export default function ResumeTrackChanges({
           </h3>
           <div>
             {isEmptySection && (
-              <div className="mb-1 text-sm italic text-muted" data-testid="empty-section-placeholder">
-                (empty)
-              </div>
+              <EmptySectionPlaceholder onSave={(text) => addContentToEmptySection(sectionIndex, text)} />
             )}
             {diffs.map((diff, unitIndex) => {
               const unit = sectionDiffs[sectionIndex].tailoredUnits[unitIndex];

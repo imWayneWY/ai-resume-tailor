@@ -220,6 +220,59 @@ describe("ROUND 5 SHOULD FIX — empty section keeps a placeholder with Revert a
   });
 });
 
+describe("ROUND 6 SMALL — empty-section placeholder is interactive and lets the user add content back", () => {
+  it("renders a clickable empty-section-placeholder (not a dead, non-interactive div) when the section is genuinely empty in both original and tailored content", () => {
+    const sections = [
+      {
+        title: "Projects",
+        content: "",
+      },
+    ];
+    // No "Projects" content in the original resume either, so there's no
+    // unmatched original unit — this exercises the genuinely-empty-section
+    // branch (isEmptySection), not the deleted-row branch.
+    const originalResume = "Experience\n• Built the checkout service.";
+
+    render(
+      <ResumeTrackChanges sections={sections} originalResume={originalResume} onSectionsChange={() => {}} />
+    );
+
+    expect(screen.getByTestId("empty-section-placeholder")).toBeInTheDocument();
+    expect(screen.queryByTestId("deleted-row")).not.toBeInTheDocument();
+  });
+
+  it("clicking the placeholder opens an inline editor; typing text and clicking Save inserts it into the now-empty section", async () => {
+    const sections = [
+      {
+        title: "Projects",
+        content: "",
+      },
+    ];
+    const originalResume = "Experience\n• Built the checkout service.";
+    const onSectionsChange = jest.fn();
+
+    render(
+      <ResumeTrackChanges
+        sections={sections}
+        originalResume={originalResume}
+        onSectionsChange={onSectionsChange}
+      />
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("empty-section-placeholder"));
+
+    const textarea = screen.getByLabelText(/Add section content/i);
+    await user.type(textarea, "Built a new side project from scratch.");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(onSectionsChange).toHaveBeenCalled();
+    const lastCall = onSectionsChange.mock.calls[onSectionsChange.mock.calls.length - 1][0];
+    const projectsSection = lastCall.find((s: { title: string; content: string }) => s.title === "Projects");
+    expect(projectsSection?.content).toContain("Built a new side project from scratch.");
+  });
+});
+
 describe("ROUND 5 SMALL — Clean mode reflects the TAILORED text's own bold state, not the original's", () => {
   it("does NOT render bold in Clean mode when the tailored text stripped the bold markers the original had", async () => {
     const sections = [

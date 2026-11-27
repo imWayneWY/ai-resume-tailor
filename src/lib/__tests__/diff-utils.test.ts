@@ -734,5 +734,33 @@ describe("ROUND 5 SMALL — capitalized proper-noun wrapped continuations fold c
   });
 });
 
+describe("ROUND 7 SMALL — removal warnings are suppressed for facts preserved with changed punctuation or moved position", () => {
+  it("'Built services with GraphQL.' -> 'Built services with GraphQL' (trailing period dropped only) gives warn: false", () => {
+    const original = "Built services with GraphQL.";
+    const revised = "Built services with GraphQL";
+    const ops = wordDiff(original, revised);
+    const warn = shouldWarnOnRemoval(original, ops.filter((o) => o.type === "remove").map((o) => o.value).join(""), revised);
+    expect(warn).toBe(false);
+  });
+
+  it("a bullet where '320M MAU' moves later in the same sentence gives warn: false — the fact is preserved, not deleted", () => {
+    const original = "Scaled the platform, serving over 320M MAU, to support growth.";
+    const revised = "Scaled the platform to support growth, serving over 320M MAU.";
+    const ops = wordDiff(original, revised);
+    const removedText = ops.filter((o) => o.type === "remove").map((o) => o.value).join("");
+    const warn = shouldWarnOnRemoval(original, removedText, revised);
+    expect(warn).toBe(false);
+  });
+
+  it("still warns when a number is genuinely dropped, not merely moved", () => {
+    const original = "Scaled the platform to support growth, serving over 320M MAU.";
+    const revised = "Scaled the platform to support growth.";
+    const ops = wordDiff(original, revised);
+    const removedText = ops.filter((o) => o.type === "remove").map((o) => o.value).join("");
+    const warn = shouldWarnOnRemoval(original, removedText, revised);
+    expect(warn).toBe(true);
+  });
+});
+
 
 

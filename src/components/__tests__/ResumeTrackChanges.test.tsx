@@ -293,3 +293,41 @@ describe("ROUND 5 SMALL — Clean mode reflects the TAILORED text's own bold sta
     expect(el.closest("strong")).toBeNull();
   });
 });
+
+describe("ROUND 7 — partially-bold headers render correctly when the text inside the bold span changes", () => {
+  it("'**Microsoft** | SDE2 | 2023 - Present' with a changed job title inside the bold span shows no raw ** and the bold word is still wrapped in <strong>", () => {
+    // This header is only PARTIALLY bold (just "Microsoft"), so
+    // BOLD_WRAPPER_RE doesn't match the whole line and diffAlignedPair does
+    // NOT strip the ** markers before diffing — they flow into the word
+    // diff ops themselves, and a diff boundary can fall right at a marker
+    // when the text inside the bold span changes. DiffOps must track bold
+    // state across ops (not per-op) so no literal ** ever renders and the
+    // bold word still ends up wrapped in <strong>.
+    const sections = [
+      {
+        title: "Experience",
+        content: "**Microsoft** | Senior SDE2 | 2023 - Present",
+      },
+    ];
+    const originalResume = "Experience\n**Microsoft** | SDE2 | 2023 - Present";
+
+    render(
+      <ResumeTrackChanges sections={sections} originalResume={originalResume} onSectionsChange={() => {}} />
+    );
+
+    // No raw, unmatched ** markers anywhere in the rendered output.
+    expect(screen.queryByText(/\*\*/)).not.toBeInTheDocument();
+    // The bold word itself is still wrapped in <strong>.
+    const boldWord = screen.getByText("Microsoft");
+    expect(boldWord.closest("strong")).not.toBeNull();
+    // The changed job title text is present and NOT wrapped in <strong>
+    // (it's outside the bold span). It's split across the "add"/"equal"
+    // diff-op spans ("Senior " added, "SDE2 | 2023 - Present" unchanged),
+    // so check each sibling span individually rather than one combined
+    // text match.
+    const addedWord = screen.getByText("Senior", { exact: false });
+    expect(addedWord.closest("strong")).toBeNull();
+    const restOfTitle = screen.getByText(/SDE2 \| 2023 - Present/);
+    expect(restOfTitle.closest("strong")).toBeNull();
+  });
+});

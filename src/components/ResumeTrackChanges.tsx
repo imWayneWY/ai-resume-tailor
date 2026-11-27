@@ -61,24 +61,66 @@ function renderBold(text: string, keyPrefix = ""): React.ReactNode[] {
     .filter((n): n is React.ReactElement => n !== null);
 }
 
-/** Renders word-diff ops with strikethrough/highlight styling. Bold styling is applied to the WHOLE unit (via the wrapping `<strong>` from the caller when `isBold`), not per-op — so a bold header that changes never leaves raw, unmatched `**` markers split across ops. */
+/**
+ * Renders word-diff ops with strikethrough/highlight styling. For a
+ * FULL-LINE bold unit (isBold), styling is applied to the WHOLE unit by the
+ * caller wrapping this in <strong> — in that case `**` markers were already
+ * stripped before diffing, so ops never contain them.
+ *
+ * For a PARTIAL bold span within an otherwise-plain line (e.g.
+ * "**Microsoft** | SDE2 | 2023 - Present", where BOLD_WRAPPER_RE doesn't
+ * match the whole line so `**` markers are NOT stripped before diffing),
+ * the `**` markers can land in different ops after word-diffing (tokenize
+ * splits each `*` as its own punctuation token, and a diff boundary can
+ * fall right at a bold marker). Rendering each op's raw value independently
+ * would leave literal, unmatched `**` characters visible. Instead, this
+ * scans the ops IN ORDER and tracks a running "inside a bold span" toggle
+ * across op boundaries: whenever a literal `**` is encountered, it's
+ * consumed (never rendered) and the toggle flips; while toggled on, the
+ * rendered content (still carrying each op's own remove/add/equal styling)
+ * is wrapped in <strong>. This lets a bold span safely start in one op and
+ * end in a later op.
+ */
 function DiffOps({ ops }: { ops: WordDiffOp[] }) {
+  let insideBold = false;
+  let boldKey = 0;
+
+  const renderSegment = (key: string, text: string, className?: string) => {
+    if (text.length === 0) return null;
+    const content = insideBold ? (
+      <strong className="font-semibold">{text}</strong>
+    ) : (
+      text
+    );
+    return className ? (
+      <span key={key} className={className}>
+        {content}
+      </span>
+    ) : (
+      <span key={key}>{content}</span>
+    );
+  };
+
   return (
     <>
       {ops.map((op, i) => {
-        if (op.type === "equal") return <span key={i}>{op.value}</span>;
-        if (op.type === "remove") {
-          return (
-            <span key={i} className="text-muted line-through decoration-error-text/70">
-              {op.value}
-            </span>
-          );
-        }
-        return (
-          <span key={i} className="rounded-sm bg-success-bg text-success-text">
-            {op.value}
-          </span>
-        );
+        // Split this op's value on literal "**" markers, flipping the
+        // running bold toggle at each marker and never rendering the
+        // marker characters themselves.
+        const pieces = op.value.split("**");
+        const nodes: React.ReactNode[] = [];
+        pieces.forEach((piece, pi) => {
+          if (pi > 0) insideBold = !insideBold;
+          const className =
+            op.type === "remove"
+              ? "text-muted line-through decoration-error-text/70"
+              : op.type === "add"
+                ? "rounded-sm bg-success-bg text-success-text"
+                : undefined;
+          const node = renderSegment(`${i}-${pi}-${boldKey++}`, piece, className);
+          if (node) nodes.push(node);
+        });
+        return nodes;
       })}
     </>
   );

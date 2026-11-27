@@ -64,6 +64,7 @@ export interface ResumeValidationResult {
   newNumbers: string[];
   newProperNouns: string[];
   droppedSkills: string[];
+  skillsSectionNotFound: boolean;
 }
 
 /**
@@ -128,18 +129,34 @@ function extractSkillsSectionFromRawText(text: string): string {
   return bodyLines.join("\n");
 }
 
-/** Splits a Skills section's content into individual skill items. */
+/**
+ * Splits a Skills section's content into individual skill items.
+ *
+ * Bullet-separated single-line sections (e.g. "- Languages: TS, JS •
+ * Technologies: React, GraphQL") can contain MULTIPLE "Label: items" groups
+ * on one physical line. The previous implementation stripped only the first
+ * label per line before splitting on commas, which left subsequent labels
+ * (e.g. "Technologies:  React") as false-positive items. The fix: split each
+ * line on •/| FIRST into segments, THEN strip a leading "Label:" prefix from
+ * EACH segment independently, THEN split on ,/; for individual items.
+ */
 function parseSkillItems(skillsContent: string): string[] {
   if (!skillsContent) return [];
   const items: string[] = [];
   const lines = skillsContent.split(/\r?\n/);
   for (const rawLine of lines) {
-    // Strip a leading category label before a colon, e.g. "Languages: JavaScript, TypeScript"
-    const line = rawLine.replace(/^[^:|,;•\n]{1,40}:/, "");
-    const parts = line.split(/[,•;|]/);
-    for (const part of parts) {
-      const item = part.trim().replace(/^[-*]\s*/, "");
-      if (item.length > 0) items.push(item);
+    // A leading "-"/"*" bullet marker on the whole line isn't a label.
+    const lineWithoutBulletMarker = rawLine.replace(/^\s*[-*]\s*/, "");
+    const segments = lineWithoutBulletMarker.split(/[•|]/);
+    for (const rawSegment of segments) {
+      // Strip a leading category label before a colon, e.g.
+      // "Languages: JavaScript, TypeScript" -> "JavaScript, TypeScript"
+      const segment = rawSegment.replace(/^\s*[^:|,;•\n]{1,40}:/, "");
+      const parts = segment.split(/[,;]/);
+      for (const part of parts) {
+        const item = part.trim().replace(/^[-*]\s*/, "");
+        if (item.length > 0) items.push(item);
+      }
     }
   }
   return items;
@@ -268,6 +285,16 @@ export function validateTailoredResume(
     }
   }
 
+  // --- Safety net: couldn't locate a Skills section at all ---
+  // If the original resume has substantial content but no recognizable
+  // Skills heading was found, the dropped-skills check above silently did
+  // nothing — surface that as its own signal so the UI can warn the user
+  // instead of quietly skipping the check.
+  const MIN_SUBSTANTIAL_LENGTH = 100;
+  const skillsSectionNotFound =
+    originalText.trim().length >= MIN_SUBSTANTIAL_LENGTH &&
+    originalSkillsSection.trim().length === 0;
+
   return {
     bannedPhraseHits,
     tackedOnClauseHits,
@@ -275,6 +302,7 @@ export function validateTailoredResume(
     newNumbers,
     newProperNouns,
     droppedSkills,
+    skillsSectionNotFound,
   };
 }
 

@@ -108,22 +108,24 @@ function findReason(
 }
 
 interface EmptySectionPlaceholderProps {
+  sectionIndex: number;
   onSave: (text: string) => void;
 }
 
 /** Click-to-edit placeholder for a now-empty section — mirrors UnitRow's edit UI so the user can add content back without regenerating the whole resume. */
-function EmptySectionPlaceholder({ onSave }: EmptySectionPlaceholderProps) {
+function EmptySectionPlaceholder({ sectionIndex, onSave }: EmptySectionPlaceholderProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
+  const textareaId = `empty-section-edit-${sectionIndex}`;
 
   if (editing) {
     return (
       <div className="mb-1">
-        <label htmlFor="empty-section-edit" className="sr-only">
+        <label htmlFor={textareaId} className="sr-only">
           Add section content
         </label>
         <textarea
-          id="empty-section-edit"
+          id={textareaId}
           aria-label="Add section content"
           autoFocus
           value={draft}
@@ -530,7 +532,10 @@ export default function ResumeTrackChanges({
           </h3>
           <div>
             {isEmptySection && (
-              <EmptySectionPlaceholder onSave={(text) => addContentToEmptySection(sectionIndex, text)} />
+              <EmptySectionPlaceholder
+                sectionIndex={sectionIndex}
+                onSave={(text) => addContentToEmptySection(sectionIndex, text)}
+              />
             )}
             {diffs.map((diff, unitIndex) => {
               const unit = sectionDiffs[sectionIndex].tailoredUnits[unitIndex];

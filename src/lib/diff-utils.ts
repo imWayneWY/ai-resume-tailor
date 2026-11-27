@@ -522,11 +522,18 @@ export function alignUnits(originalUnits: ContentUnit[], tailoredUnits: ContentU
       // elsewhere (to a DIFFERENT original) — unless that assignment is
       // weak enough (below the combined-adoption threshold) to be a safe
       // give-up. A solid independent match (>= threshold) to a different
-      // original must NOT be stolen into this split.
-      const tScore = assignedOriginal.get(t) !== o ? assignedScore.get(t) ?? -1 : -1;
-      const t1Score = assignedOriginal.get(t + 1) !== o ? assignedScore.get(t + 1) ?? -1 : -1;
-      if (tScore >= MIN_SPLIT_COMBINED_SIMILARITY || t1Score >= MIN_SPLIT_COMBINED_SIMILARITY) continue;
-      if (tScore >= combinedScore || t1Score >= combinedScore) continue;
+      // original must NOT be stolen into this split. Separately, the
+      // combined score must STRICTLY beat each unit's current assignment
+      // (even one to this SAME original, e.g. an exact single-unit match)
+      // — a tie must never be treated as an improvement, since that would
+      // let two otherwise-unchanged bullets get grouped, or an unrelated
+      // addition get absorbed beside an exact match.
+      const tVetoScore = assignedOriginal.get(t) !== o ? assignedScore.get(t) ?? -1 : -1;
+      const t1VetoScore = assignedOriginal.get(t + 1) !== o ? assignedScore.get(t + 1) ?? -1 : -1;
+      if (tVetoScore >= MIN_SPLIT_COMBINED_SIMILARITY || t1VetoScore >= MIN_SPLIT_COMBINED_SIMILARITY) continue;
+      const tScore = assignedScore.get(t) ?? -1;
+      const t1Score = assignedScore.get(t + 1) ?? -1;
+      if (combinedScore <= tScore || combinedScore <= t1Score) continue;
       // Don't steal this original from a DIFFERENT adjacent pair that
       // already has a stronger combined claim on it.
       const existingOwnerT = assignedOriginal.get(t) === o ? t : undefined;
@@ -688,7 +695,7 @@ function isSentenceInitialInOriginal(word: string, originalText: string): boolea
  * the removal is (after stripping any matched intent/values clause)
  * entirely filler/empty.
  */
-export function shouldWarnOnRemoval(originalText: string, removedText: string): boolean {
+export function shouldWarnOnRemoval(originalText: string, removedText: string, tailoredText = ""): boolean {
   const removedTrimmed = removedText.trim();
   if (!removedTrimmed) return false;
 
@@ -704,11 +711,22 @@ export function shouldWarnOnRemoval(originalText: string, removedText: string): 
 
   if (isFillerOnlyRemoval(removedWords)) return false;
 
+  // A removed token whose normalized (punctuation-stripped) form still
+  // appears among the tailored text's normalized words hasn't actually
+  // lost its fact — only its punctuation/position changed (e.g. "GraphQL."
+  // removed while "GraphQL" is added right back, or a preserved number/name
+  // that merely moved). Don't let such tokens trigger a factual-loss
+  // warning on their own.
+  const tailoredWordSet = new Set(wordsOf(tailoredText));
+  const factuallyRemovedWords = removedWords.filter((w) => !tailoredWordSet.has(w));
+  if (factuallyRemovedWords.length === 0) return false;
+
   let hasProperNoun = false;
   PROPER_NOUN_RE.lastIndex = 0;
   let nounMatch: RegExpExecArray | null;
   while ((nounMatch = PROPER_NOUN_RE.exec(effectiveRemoved)) !== null) {
     const word = nounMatch[0];
+    if (tailoredWordSet.has(normalizeWords(word)[0] ?? "")) continue;
     if (!isSentenceInitialInOriginal(word, originalText)) {
       hasProperNoun = true;
       break;
@@ -719,13 +737,18 @@ export function shouldWarnOnRemoval(originalText: string, removedText: string): 
 
   const hasNumber = NUMBER_RE.test(effectiveRemoved);
   NUMBER_RE.lastIndex = 0;
-  if (hasNumber) return true;
+  if (hasNumber) {
+    const removedNumbers = effectiveRemoved.match(NUMBER_RE) ?? [];
+    NUMBER_RE.lastIndex = 0;
+    const stillPresent = removedNumbers.every((n) => tailoredWordSet.has(normalizeWords(n)[0] ?? ""));
+    if (!stillPresent) return true;
+  }
 
   // Full-sentence-removal heuristic: did most of the original's significant
   // words (length > 3) disappear from the revised text altogether?
   const originalWords = wordsOf(originalText).filter((w) => w.length > 3);
   if (originalWords.length >= 4) {
-    const removedSignificant = removedWords.filter((w) => w.length > 3);
+    const removedSignificant = factuallyRemovedWords.filter((w) => w.length > 3);
     const ratio = removedSignificant.length / originalWords.length;
     if (ratio >= 0.5) return true;
   }
@@ -736,7 +759,7 @@ export function shouldWarnOnRemoval(originalText: string, removedText: string): 
   // content, not adjective trimming. Use word count as the signal: a single
   // adjective or short qualifier (1-2 words) is typically trimming; 3+
   // substantive words removed together is more likely a factual clause.
-  const substantiveRemoved = removedWords.filter(
+  const substantiveRemoved = factuallyRemovedWords.filter(
     (w) => !STOPWORDS.has(w) && !SUBJECTIVE_FILLER_WORDS.has(w) && !BANNED_PHRASES.includes(w)
   );
   if (substantiveRemoved.length >= 2) return true;
@@ -784,7 +807,7 @@ export function diffAlignedPair(pair: AlignedPair): UnitDiff {
     .filter((op) => op.type === "remove")
     .map((op) => op.value)
     .join("");
-  const warn = changed && pair.originalIndex !== -1 && shouldWarnOnRemoval(pair.originalText, removedText);
+  const warn = changed && pair.originalIndex !== -1 && shouldWarnOnRemoval(pair.originalText, removedText, tailoredPlain);
   return {
     tailoredIndex: pair.tailoredIndex,
     originalIndex: pair.originalIndex,

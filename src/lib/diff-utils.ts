@@ -90,7 +90,7 @@ const STOPWORDS = new Set([
 // when they happen to reference a company/proper noun — the clause itself
 // states intent/values, not a verifiable fact about scope of work.
 const INTENT_VALUES_CLAUSE_RE =
-  /\b(supporting|reflecting|aligned with|in line with)\b.{0,40}\b(commitment|values|culture|mission|vision)\b(\s+(to|for|of|toward|towards)\s+[^,.;]*)?|\bin an? (fast-paced|dynamic|collaborative) environment\b/i;
+  /\b(supporting|reflecting|aligned with|in line with)\b.{0,40}\b(commitment|values|culture|mission|vision)\b(\s+(to|for|of|toward|towards)\s+[^,.;]*)?|\bin an? (fast-paced|dynamic|collaborative)(\s+\w+)? environment\b|\bto (deliver|provide|create) an? \w+ (user )?experience\b/i;
 
 /**
  * Strips the FIRST matched intent/values clause substring out of the removed
@@ -158,18 +158,46 @@ export function splitIntoUnits(content: string): ContentUnit[] {
   if (!content) return [];
   const units: ContentUnit[] = [];
   const lines = content.split(/\r?\n/);
+  // Compute each line's start offset in `content` up front so we can safely
+  // merge a bullet line with an immediately-following non-bullet
+  // continuation line (a PDF-wrapped bullet) into ONE unit whose `raw` is
+  // the exact literal content span covering both physical lines — never a
+  // synthetic rejoin — so replaceUnitSpan/replaceUnitsSpan still work.
+  const lineStarts: number[] = [];
+  {
+    let offset = 0;
+    for (const line of lines) {
+      lineStarts.push(offset);
+      offset += line.length + 1; // +1 for the stripped newline
+    }
+  }
   let cursor = 0;
-  for (const line of lines) {
+  for (let li = 0; li < lines.length; li++) {
+    const line = lines[li];
     const trimmed = line.trim();
     if (trimmed.length === 0) {
       cursor += line.length + 1;
       continue;
     }
     if (BULLET_LINE_RE.test(trimmed)) {
-      const raw = trimmed;
-      const start = content.indexOf(raw, cursor);
-      units.push({ raw, text: raw.replace(BULLET_LINE_RE, ""), isBullet: true, start: start === -1 ? cursor : start });
-      cursor = (start === -1 ? cursor : start) + raw.length;
+      // Look ahead: does a non-bullet continuation line immediately follow
+      // (no blank line in between)? If so, fold it into this bullet unit.
+      let endLineIndex = li;
+      const continuationTexts: string[] = [];
+      for (let nj = li + 1; nj < lines.length; nj++) {
+        const nextTrimmed = lines[nj].trim();
+        if (nextTrimmed.length === 0 || BULLET_LINE_RE.test(nextTrimmed)) break;
+        continuationTexts.push(nextTrimmed);
+        endLineIndex = nj;
+      }
+      const spanStart = lineStarts[li] + (lines[li].length - lines[li].trimStart().length);
+      const lastLine = lines[endLineIndex];
+      const spanEnd = lineStarts[endLineIndex] + lastLine.trimEnd().length;
+      const raw = content.slice(spanStart, spanEnd);
+      const text = [trimmed.replace(BULLET_LINE_RE, ""), ...continuationTexts].join(" ");
+      units.push({ raw, text, isBullet: true, start: spanStart });
+      cursor = spanEnd;
+      li = endLineIndex;
       continue;
     }
     // Prose line (e.g. an entry header, or a Summary paragraph): split into
@@ -208,8 +236,33 @@ export function replaceUnitsSpan(content: string, units: ContentUnit[], newText:
   const sorted = [...units].sort((a, b) => a.start - b.start);
   const first = sorted[0];
   const last = sorted[sorted.length - 1];
+  const contiguous = sorted.every((u, i) => {
+    if (i === 0) return true;
+    const prev = sorted[i - 1];
+    const gap = content.slice(prev.start + prev.raw.length, u.start);
+    // Only treat as contiguous if nothing but whitespace/newlines sits
+    // between consecutive grouped units — any other content (e.g. an
+    // unrelated bullet) in the gap means this is NOT a real contiguous
+    // span and must be replaced unit-by-unit instead.
+    return /^\s*$/.test(gap);
+  });
   const newRaw = first.isBullet ? `${first.raw.match(BULLET_LINE_RE)?.[0] ?? "• "}${newText}` : newText;
-  return content.slice(0, first.start) + newRaw + content.slice(last.start + last.raw.length);
+  if (contiguous) {
+    // Fast path: the group's units are one contiguous span — replace it in
+    // one shot (collapses any whitespace/newlines between them too).
+    return content.slice(0, first.start) + newRaw + content.slice(last.start + last.raw.length);
+  }
+  // Non-adjacent group: never blindly span first-to-last (that would delete
+  // any unrelated content sitting between them). Replace each unit's own
+  // span individually, working BACKWARDS so earlier offsets stay valid, and
+  // insert the single replacement text only once (at the first unit).
+  let result = content;
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    const u = sorted[i];
+    const replacement = i === 0 ? newRaw : "";
+    result = result.slice(0, u.start) + replacement + result.slice(u.start + u.raw.length);
+  }
+  return result;
 }
 
 /**
@@ -218,7 +271,9 @@ export function replaceUnitsSpan(content: string, units: ContentUnit[], newText:
  */
 export function insertUnitAfter(content: string, afterUnit: ContentUnit | undefined, rawText: string): string {
   const insertPos = afterUnit ? afterUnit.start + afterUnit.raw.length : 0;
-  const separator = content.includes("\n") || !afterUnit ? "\n" : " ";
+  const newUnitIsBullet = rawText.trim().startsWith("•") || rawText.trim().startsWith("-") || rawText.trim().startsWith("*");
+  const needsNewline = content.includes("\n") || !afterUnit || afterUnit.isBullet || newUnitIsBullet;
+  const separator = needsNewline ? "\n" : " ";
   const prefix = content.slice(0, insertPos);
   const suffix = content.slice(insertPos);
   if (!afterUnit) {
@@ -236,9 +291,9 @@ export type WordDiffOp =
   | { type: "remove"; value: string }
   | { type: "add"; value: string };
 
-/** Tokenizes into words + the whitespace/punctuation between them, preserving round-trip text. */
+/** Tokenizes into words + punctuation + whitespace as separate token types, preserving round-trip text. Keeps internal apostrophes/hyphens as part of a word token (e.g. "don't", "high-impact") but splits off leading/trailing punctuation like commas/periods so "Pay" and "Pay," diff as the same word token plus a separate punctuation token. */
 function tokenize(text: string): string[] {
-  return text.match(/\S+|\s+/g) || [];
+  return text.match(/[a-zA-Z0-9]+(?:['-][a-zA-Z0-9]+)*|\s+|[^\sa-zA-Z0-9]/g) || [];
 }
 
 /**
@@ -307,32 +362,105 @@ export interface AlignedPair {
 }
 
 const MIN_ALIGNMENT_SIMILARITY = 0.15;
+// Threshold for treating two ADJACENT, otherwise-unmatched-or-differently-matched
+// tailored units as a genuine split of one original unit: their combined text
+// must cover a substantial share of the original's words.
+const MIN_SPLIT_COMBINED_SIMILARITY = 0.3;
 
 /**
- * Aligns each tailored unit to the most similar original unit (by word
- * overlap). Multiple tailored units may align to the same original unit
- * (e.g. when the model splits one bullet into two) — this is intentional:
- * reverting either tailored unit restores it to that shared original text
- * (see groupAlignedPairs for collapsing the whole group on revert).
+ * Aligns each tailored unit to AT MOST one original unit, one-to-one by
+ * default: every (tailoredIndex, originalIndex) candidate pair above
+ * MIN_ALIGNMENT_SIMILARITY is scored, then pairs are greedily assigned
+ * highest-similarity-first, marking each original unit as "used" once
+ * claimed so two unrelated tailored units can never both claim the same
+ * original just because they're independently similar to it (e.g. both
+ * mentioning "Teams chat").
+ *
+ * After one-to-one assignment, a SPARE (never-claimed) original unit may
+ * still be adopted by a genuine split-bullet pair: two ADJACENT tailored
+ * units (by tailoredIndex) whose combined text substantially covers the
+ * original's words are reassigned to that original together. This is the
+ * only way multiple tailored units may end up sharing one originalIndex —
+ * coincidental similarity to the same original, without adjacency +
+ * combined-coverage, is NOT treated as a split.
  */
 export function alignUnits(originalUnits: ContentUnit[], tailoredUnits: ContentUnit[]): AlignedPair[] {
-  return tailoredUnits.map((tailored, tailoredIndex) => {
-    let bestIndex = -1;
-    let bestScore = -1;
-    for (let i = 0; i < originalUnits.length; i++) {
-      const score = similarity(originalUnits[i].text, tailored.text);
-      if (score > bestScore) {
-        bestScore = score;
-        bestIndex = i;
+  // 1. Build all candidate pairs above the similarity floor.
+  type Candidate = { tailoredIndex: number; originalIndex: number; score: number };
+  const candidates: Candidate[] = [];
+  for (let t = 0; t < tailoredUnits.length; t++) {
+    for (let o = 0; o < originalUnits.length; o++) {
+      const score = similarity(originalUnits[o].text, tailoredUnits[t].text);
+      if (score >= MIN_ALIGNMENT_SIMILARITY) {
+        candidates.push({ tailoredIndex: t, originalIndex: o, score });
       }
     }
-    const matched = bestIndex !== -1 && bestScore >= MIN_ALIGNMENT_SIMILARITY;
+  }
+  candidates.sort((a, b) => b.score - a.score);
+
+  const assignedOriginal = new Map<number, number>(); // tailoredIndex -> originalIndex
+  const assignedScore = new Map<number, number>(); // tailoredIndex -> score
+  const usedOriginals = new Set<number>();
+  for (const c of candidates) {
+    if (assignedOriginal.has(c.tailoredIndex) || usedOriginals.has(c.originalIndex)) continue;
+    assignedOriginal.set(c.tailoredIndex, c.originalIndex);
+    assignedScore.set(c.tailoredIndex, c.score);
+    usedOriginals.add(c.originalIndex);
+  }
+
+  // 2. Look for genuine split-bullet cases: an original unit whose current
+  // single best match (if any) is weaker than what two ADJACENT tailored
+  // units could cover together. We check every original (not just spares)
+  // because the single-best match might belong to only one of the two
+  // halves of a real split.
+  for (let o = 0; o < originalUnits.length; o++) {
+    for (let t = 0; t + 1 < tailoredUnits.length; t++) {
+      const combinedText = `${tailoredUnits[t].text} ${tailoredUnits[t + 1].text}`;
+      const combinedScore = similarity(originalUnits[o].text, combinedText);
+      if (combinedScore < MIN_SPLIT_COMBINED_SIMILARITY) continue;
+      // Only adopt tailored units into the split if doing so doesn't
+      // steal a BETTER-scoring assignment they already have elsewhere (to
+      // a DIFFERENT original).
+      const tScore = assignedOriginal.get(t) !== o ? assignedScore.get(t) ?? -1 : -1;
+      const t1Score = assignedOriginal.get(t + 1) !== o ? assignedScore.get(t + 1) ?? -1 : -1;
+      if (tScore > combinedScore || t1Score > combinedScore) continue;
+      // Don't steal this original from a DIFFERENT adjacent pair that
+      // already has a stronger combined claim on it.
+      const existingOwnerT = assignedOriginal.get(t) === o ? t : undefined;
+      const existingOwnerT1 = assignedOriginal.get(t + 1) === o ? t + 1 : undefined;
+      if (existingOwnerT === undefined && existingOwnerT1 === undefined && usedOriginals.has(o)) {
+        // original is claimed by some unrelated tailored unit with a
+        // potentially-better single-match score; only override if the
+        // split's combined score beats that single match.
+        const owner = Array.from(assignedOriginal.entries()).find(([, oi]) => oi === o)?.[0];
+        const ownerScore = owner !== undefined ? assignedScore.get(owner) ?? -1 : -1;
+        if (ownerScore >= combinedScore) continue;
+        if (owner !== undefined) usedOriginals.delete(o);
+      }
+      // Release any originals these two previously claimed (they're
+      // being reassigned to the split original instead).
+      const prevT = assignedOriginal.get(t);
+      const prevT1 = assignedOriginal.get(t + 1);
+      if (prevT !== undefined && prevT !== o) usedOriginals.delete(prevT);
+      if (prevT1 !== undefined && prevT1 !== o) usedOriginals.delete(prevT1);
+      assignedOriginal.set(t, o);
+      assignedOriginal.set(t + 1, o);
+      assignedScore.set(t, combinedScore);
+      assignedScore.set(t + 1, combinedScore);
+      usedOriginals.add(o);
+      break;
+    }
+  }
+
+  return tailoredUnits.map((tailored, tailoredIndex) => {
+    const originalIndex = assignedOriginal.get(tailoredIndex);
+    const matched = originalIndex !== undefined;
     return {
       tailoredIndex,
-      originalIndex: matched ? bestIndex : -1,
-      originalText: matched ? originalUnits[bestIndex].text : "",
+      originalIndex: matched ? originalIndex! : -1,
+      originalText: matched ? originalUnits[originalIndex!].text : "",
       tailoredText: tailored.text,
-      similarity: matched ? bestScore : 0,
+      similarity: matched ? assignedScore.get(tailoredIndex)! : 0,
     };
   });
 }

@@ -277,3 +277,130 @@ describe("ALSO FIX — proper-noun sentence-initial check uses position in ORIGI
   });
 });
 
+describe("MUST FIX 1 — alignment is one-to-one by default; group revert never deletes unrelated bullets", () => {
+  it("two DIFFERENT tailored bullets that each mention a shared phrase ('Teams chat') align to THEIR OWN correct originals, not falsely grouped", () => {
+    const originalSection =
+      "• Rolled out Teams chat integration for the support desk.\n• Migrated the billing pipeline to a new vendor.";
+    const tailoredSection =
+      "• Rolled out Teams chat integration to streamline support desk workflows.\n• Migrated the entire billing pipeline over to a new, modern vendor using Teams chat for rollout coordination.";
+
+    const originalUnits = splitIntoUnits(originalSection);
+    const tailoredUnits = splitIntoUnits(tailoredSection);
+    const pairs = alignUnits(originalUnits, tailoredUnits);
+
+    // Each tailored bullet should align to its OWN originating bullet —
+    // one-to-one — not both collapse onto the "Teams chat" original.
+    expect(pairs[0].originalIndex).toBe(0);
+    expect(pairs[1].originalIndex).toBe(1);
+    expect(pairs[0].originalIndex).not.toBe(pairs[1].originalIndex);
+
+    const groups = groupTailoredIndicesByOriginal(pairs);
+    // No group should contain both tailored indices.
+    groups.forEach((indices) => {
+      expect(indices).not.toEqual(expect.arrayContaining([0, 1]));
+    });
+  });
+
+  it("a genuine split-bullet case still gets grouped and reverts correctly to one bullet", () => {
+    const original = "• Built and deployed the checkout service used by 10,000 customers daily.";
+    const revised =
+      "• Built the checkout service.\n• Deployed it to production, used by 10,000 customers daily.";
+
+    const originalUnits = splitIntoUnits(original);
+    const tailoredUnits = splitIntoUnits(revised);
+    const pairs = alignUnits(originalUnits, tailoredUnits);
+    expect(pairs[0].originalIndex).toBe(0);
+    expect(pairs[1].originalIndex).toBe(0);
+
+    const groups = groupTailoredIndicesByOriginal(pairs);
+    const groupIndices = groups.get(0)!;
+    expect(groupIndices).toEqual([0, 1]);
+
+    const groupUnits = groupIndices.map((i) => tailoredUnits[i]);
+    const result = replaceUnitsSpan(revised, groupUnits, originalUnits[0].text);
+    const resultUnits = splitIntoUnits(result);
+    expect(resultUnits).toHaveLength(1);
+    expect(resultUnits[0].text).toBe(originalUnits[0].text);
+  });
+
+  it("reverting a split group never removes an intervening, unrelated bullet physically between the group's units", () => {
+    // Construct tailored content where the two units that align to the SAME
+    // original (a real split) are NOT adjacent in the tailored content —
+    // an unrelated bullet sits physically between them. Group revert must
+    // only touch the group's own spans, never the span in between.
+    const content =
+      "• Alpha half of the split bullet about reporting dashboards.\n• An unrelated bullet about something completely different.\n• Beta half of the split bullet about reporting dashboards.";
+    const units = splitIntoUnits(content);
+    expect(units).toHaveLength(3);
+
+    // Simulate group containing units[0] and units[2] (non-adjacent).
+    const groupUnits = [units[0], units[2]];
+    const result = replaceUnitsSpan(content, groupUnits, "Combined reporting dashboard bullet.");
+    const resultUnits = splitIntoUnits(result);
+
+    // The unrelated bullet must survive untouched.
+    expect(resultUnits.some((u) => u.text.includes("unrelated bullet"))).toBe(true);
+    // The combined replacement text appears exactly once.
+    const combinedCount = resultUnits.filter((u) => u.text === "Combined reporting dashboard bullet.").length;
+    expect(combinedCount).toBe(1);
+    // Total unit count: the unrelated bullet + the single combined bullet.
+    expect(resultUnits).toHaveLength(2);
+  });
+});
+
+describe("MUST FIX 3 — punctuation-only changes don't trigger a false warning", () => {
+  it("'WeChat Pay and Alipay' -> 'WeChat Pay, and Alipay' (comma insertion only) produces warn: false", () => {
+    const original = "Integrated with WeChat Pay and Alipay for checkout.";
+    const revised = "Integrated with WeChat Pay, and Alipay for checkout.";
+    const originalUnits = splitIntoUnits(original);
+    const tailoredUnits = splitIntoUnits(revised);
+    const pairs = alignUnits(originalUnits, tailoredUnits);
+    const diff = diffAlignedPair(pairs[0]);
+    expect(diff.warn).toBe(false);
+  });
+});
+
+describe("ALSO FIX — INTENT_VALUES_CLAUSE_RE tolerance and new alternative", () => {
+  it("does NOT warn when 'in a fast-paced STARTUP environment' is removed (extra word tolerance)", () => {
+    const original = "Delivered features in a fast-paced startup environment under tight deadlines.";
+    const revised = "Delivered features under tight deadlines.";
+    const originalUnits = splitIntoUnits(original);
+    const tailoredUnits = splitIntoUnits(revised);
+    const pairs = alignUnits(originalUnits, tailoredUnits);
+    const diff = diffAlignedPair(pairs[0]);
+    expect(diff.warn).toBe(false);
+  });
+
+  it("does NOT warn when 'to deliver an immersive user experience' intent clause is removed", () => {
+    const original = "Redesigned the checkout flow to deliver an immersive user experience for shoppers.";
+    const revised = "Redesigned the checkout flow for shoppers.";
+    const originalUnits = splitIntoUnits(original);
+    const tailoredUnits = splitIntoUnits(revised);
+    const pairs = alignUnits(originalUnits, tailoredUnits);
+    const diff = diffAlignedPair(pairs[0]);
+    expect(diff.warn).toBe(false);
+  });
+});
+
+describe("ALSO FIX — splitIntoUnits joins a PDF-wrapped bullet continuation line into the preceding bullet", () => {
+  it("produces ONE unit for a bullet line followed by a non-bullet continuation line", () => {
+    const content = "• Led the migration of the legacy billing\nsystem to a new cloud-native platform.";
+    const units = splitIntoUnits(content);
+    expect(units).toHaveLength(1);
+    expect(units[0].isBullet).toBe(true);
+    expect(units[0].text).toContain("Led the migration of the legacy billing");
+    expect(units[0].text).toContain("system to a new cloud-native platform.");
+  });
+});
+
+describe("ALSO FIX — insertUnitAfter uses newline separator for bullets even into single-bullet/no-newline content", () => {
+  it("inserts a bullet after another bullet using \\n, never concatenating onto one line", () => {
+    const content = "• Only bullet in this section.";
+    const units = splitIntoUnits(content);
+    const result = insertUnitAfter(content, units[0], "• Restored bullet text.");
+    expect(result).toBe("• Only bullet in this section.\n• Restored bullet text.");
+    const resultUnits = splitIntoUnits(result);
+    expect(resultUnits).toHaveLength(2);
+  });
+});
+

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   splitIntoUnits,
   alignUnits,
@@ -36,22 +36,47 @@ interface ResumeTrackChangesProps {
   onSectionsChange: (sections: TrackChangesSection[]) => void;
 }
 
-/** Renders word-diff ops with strikethrough/highlight styling. */
+/**
+ * Renders `**bold text**` markdown-style markup as actual bold (<strong>)
+ * React nodes. Any text outside `**...**` pairs is rendered as plain text.
+ * Used for both Show-changes (per diff-op, after the diff is computed) and
+ * Clean mode (plain final text) so entry headers like
+ * "**MICROSOFT, VANCOUVER, SDE2 (2023 - PRESENT)**" render bold instead of
+ * showing raw asterisks.
+ */
+function renderBold(text: string, keyPrefix = ""): React.ReactNode[] {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return parts
+    .map((part, i) => {
+      const m = /^\*\*([^*]+)\*\*$/.exec(part);
+      if (m) {
+        return (
+          <strong key={`${keyPrefix}b${i}`} className="font-semibold">
+            {m[1]}
+          </strong>
+        );
+      }
+      return part ? <span key={`${keyPrefix}t${i}`}>{part}</span> : null;
+    })
+    .filter((n): n is React.ReactElement => n !== null);
+}
+
+/** Renders word-diff ops with strikethrough/highlight styling, applying bold markup within each op's rendered text. */
 function DiffOps({ ops }: { ops: WordDiffOp[] }) {
   return (
     <>
       {ops.map((op, i) => {
-        if (op.type === "equal") return <span key={i}>{op.value}</span>;
+        if (op.type === "equal") return <span key={i}>{renderBold(op.value, `eq${i}-`)}</span>;
         if (op.type === "remove") {
           return (
             <span key={i} className="text-muted line-through decoration-error-text/70">
-              {op.value}
+              {renderBold(op.value, `rm${i}-`)}
             </span>
           );
         }
         return (
           <span key={i} className="rounded-sm bg-success-bg text-success-text">
-            {op.value}
+            {renderBold(op.value, `ad${i}-`)}
           </span>
         );
       })}
@@ -99,9 +124,15 @@ function UnitRow({ diff, isBullet, showChanges, reason, isAdded, onRevert, onEdi
   const [draft, setDraft] = useState(diff.tailoredText);
 
   if (editing) {
+    const textareaId = `unit-edit-${diff.tailoredIndex}-${diff.originalIndex}`;
     return (
       <div className={isBullet ? "mb-1 pl-4" : "mb-1"}>
+        <label htmlFor={textareaId} className="sr-only">
+          Edit bullet text
+        </label>
         <textarea
+          id={textareaId}
+          aria-label="Edit bullet text"
           autoFocus
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
@@ -148,13 +179,13 @@ function UnitRow({ diff, isBullet, showChanges, reason, isAdded, onRevert, onEdi
         className="w-full whitespace-pre-wrap rounded-sm text-left text-sm leading-relaxed hover:bg-surface"
       >
         {isBullet && <span className="absolute left-0">•</span>}
-        {showChanges && isChanged ? <DiffOps ops={diff.ops} /> : diff.tailoredText}
-        {isAdded && (
+        {showChanges && isChanged ? <DiffOps ops={diff.ops} /> : renderBold(diff.tailoredText)}
+        {showChanges && isAdded && (
           <span className="ml-1 rounded-sm bg-accent/10 px-1 text-[10px] font-medium uppercase tracking-wide text-accent">
             added
           </span>
         )}
-        {diff.warn && (
+        {showChanges && diff.warn && (
           <span
             title="This diff removes content that may be a real fact — review before accepting"
             className="ml-1 text-error-text"
@@ -227,7 +258,9 @@ function DeletedRow({ text, isBullet, onRestore }: DeletedRowProps) {
         className="w-full whitespace-pre-wrap rounded-sm text-left text-sm leading-relaxed hover:bg-surface"
       >
         {isBullet && <span className="absolute left-0">•</span>}
-        <span className="text-muted line-through decoration-error-text/70">{text}</span>
+        <span className="text-muted line-through decoration-error-text/70" data-testid="deleted-row">
+          {renderBold(text)}
+        </span>
         <span
           title="This original content was fully removed — review before accepting"
           className="ml-1 text-error-text"
@@ -284,14 +317,15 @@ export default function ResumeTrackChanges({
   const sectionDiffs = useMemo(() => {
     return sections.map((section) => {
       const matchedOriginal = extractOriginalSectionText(originalResume, section.title);
-      const originalPool = matchedOriginal.trim().length > 0 ? matchedOriginal : originalResume;
+      const isFallbackPool = matchedOriginal.trim().length === 0;
+      const originalPool = isFallbackPool ? originalResume : matchedOriginal;
       const originalUnits = splitIntoUnits(originalPool);
       const tailoredUnits = splitIntoUnits(section.content);
       const pairs = alignUnits(originalUnits, tailoredUnits);
       const diffs = pairs.map(diffAlignedPair);
-      const unmatchedOriginalIndices = findUnmatchedOriginalIndices(originalUnits, pairs);
+      const unmatchedOriginalIndices = isFallbackPool ? [] : findUnmatchedOriginalIndices(originalUnits, pairs);
       const groups = groupTailoredIndicesByOriginal(pairs);
-      return { section, originalUnits, tailoredUnits, diffs, unmatchedOriginalIndices, groups };
+      return { section, originalUnits, tailoredUnits, diffs, unmatchedOriginalIndices, groups, isFallbackPool };
     });
   }, [sections, originalResume]);
 
@@ -426,45 +460,47 @@ export default function ResumeTrackChanges({
                 />
               );
             })}
-            {unmatchedOriginalIndices.map((originalIndex) => {
-              const originalUnit = originalUnits[originalIndex];
-              if (!originalUnit) return null;
-              return (
-                <DeletedRow
-                  key={`deleted-${originalIndex}`}
-                  text={originalUnit.text}
-                  isBullet={originalUnit.isBullet}
-                  onRestore={() => restoreDeletedUnit(sectionIndex, originalIndex)}
-                />
-              );
-            })}
+            {showChanges &&
+              unmatchedOriginalIndices.map((originalIndex) => {
+                const originalUnit = originalUnits[originalIndex];
+                if (!originalUnit) return null;
+                return (
+                  <DeletedRow
+                    key={`deleted-${originalIndex}`}
+                    text={originalUnit.text}
+                    isBullet={originalUnit.isBullet}
+                    onRestore={() => restoreDeletedUnit(sectionIndex, originalIndex)}
+                  />
+                );
+              })}
           </div>
         </div>
       ))}
 
-      {missingSections.map(({ heading, content, insertIndex }) => (
-        <div key={`missing-section-${heading}`} className="mt-6">
-          <h3 className="mb-3 flex items-center gap-2 border-b border-border pb-1 text-lg font-semibold tracking-tight text-muted">
-            {heading.replace(/:\s*$/, "")}
-            <span className="rounded-sm bg-error-bg px-1 text-[10px] font-medium uppercase tracking-wide text-error-text">
-              deleted section
-            </span>
-          </h3>
-          <div className="mb-2 whitespace-pre-wrap text-sm leading-relaxed text-muted line-through decoration-error-text/70">
-            {content}
-            <span className="ml-1 text-error-text" aria-label="warning">
-              ⚠
-            </span>
+      {showChanges &&
+        missingSections.map(({ heading, content, insertIndex }) => (
+          <div key={`missing-section-${heading}`} className="mt-6" data-testid="deleted-section">
+            <h3 className="mb-3 flex items-center gap-2 border-b border-border pb-1 text-lg font-semibold tracking-tight text-muted">
+              {heading.replace(/:\s*$/, "")}
+              <span className="rounded-sm bg-error-bg px-1 text-[10px] font-medium uppercase tracking-wide text-error-text">
+                deleted section
+              </span>
+            </h3>
+            <div className="mb-2 whitespace-pre-wrap text-sm leading-relaxed text-muted line-through decoration-error-text/70">
+              {content}
+              <span className="ml-1 text-error-text" aria-label="warning">
+                ⚠
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => restoreDeletedSection(heading, content, insertIndex)}
+              className="rounded-md border border-border px-2 py-1 text-xs font-medium hover:bg-surface"
+            >
+              Restore
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => restoreDeletedSection(heading, content, insertIndex)}
-            className="rounded-md border border-border px-2 py-1 text-xs font-medium hover:bg-surface"
-          >
-            Restore
-          </button>
-        </div>
-      ))}
+        ))}
     </div>
   );
 }

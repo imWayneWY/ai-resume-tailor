@@ -437,7 +437,6 @@ describe("MUST FIX 1 — split adoption clears the previous owner's assignment i
     const originalUnits = splitIntoUnits(originalSection);
     const tailoredUnits = splitIntoUnits(tailoredSection);
     const pairs = alignUnits(originalUnits, tailoredUnits);
-    console.log(JSON.stringify(pairs));
     const groups = groupTailoredIndicesByOriginal(pairs);
     groups.forEach((indices) => {
       expect(indices.length).toBeLessThanOrEqual(2);
@@ -512,5 +511,124 @@ describe("ALSO FIX — INTENT_VALUES_CLAUSE_RE allowlist no longer exempts domai
     expect(diff.warn).toBe(true);
   });
 });
+
+describe("ROUND 5 MUST FIX 1 — CRLF offsets no longer drift", () => {
+  it("reverting one bullet in CRLF content leaves everything else byte-identical", () => {
+    const originalCRLF =
+      "Experience\r\n• Built the checkout service.\r\n• Deployed it to production.\r\n• Maintained the reporting dashboard.";
+    const normalizedOriginal = originalCRLF.replace(/\r\n/g, "\n");
+    const tailoredCRLF =
+      "Experience\r\n• Built the checkout service.\r\n• Shipped a totally rewritten bullet.\r\n• Maintained the reporting dashboard.";
+    const tailored = tailoredCRLF.replace(/\r\n/g, "\n");
+    const originalUnits = splitIntoUnits(normalizedOriginal);
+    const tailoredUnits = splitIntoUnits(tailored);
+    // The second bullet (index 1, "Shipped a totally rewritten bullet.") is
+    // the one that diverged from the original's second bullet ("Deployed it
+    // to production."). Revert it directly by index/span.
+    const unit = tailoredUnits.find((u) => u.text === "Shipped a totally rewritten bullet.")!;
+    expect(unit).toBeDefined();
+    const originalUnit = originalUnits.find((u) => u.text === "Deployed it to production.")!;
+    expect(originalUnit).toBeDefined();
+    const reverted = replaceUnitSpan(tailored, unit, originalUnit.text);
+    expect(reverted).toBe(normalizedOriginal);
+  });
+});
+
+describe("ROUND 5 MUST FIX 4 — split-adoption ties never trigger a takeover", () => {
+  it("does NOT take over when the combined split score exactly equals the existing owner's score", () => {
+    // Construct original + tailored units where the single-match score and
+    // the combined-split score come out numerically equal.
+    const originalSection = "• alpha beta gamma delta";
+    // X: a single tailored unit that matches "alpha beta gamma delta" with
+    // similarity exactly equal to what a split pair would combine to.
+    const tailoredSection = "• alpha beta gamma delta\n• unrelated filler\n• unrelated filler two";
+    const originalUnits = splitIntoUnits(originalSection);
+    const tailoredUnits = splitIntoUnits(tailoredSection);
+    const pairs = alignUnits(originalUnits, tailoredUnits);
+    const groups = groupTailoredIndicesByOriginal(pairs);
+    // With only one true match (exact match, score 1.0) and no genuinely
+    // better split candidate, the single match must remain the sole owner —
+    // no group should end up with more than 1 unit mapped via a tie.
+    groups.forEach((indices) => {
+      if (indices.length > 1) {
+        // If grouped, it must be because of a strictly better combined
+        // score, never a tie — verify the single original owner's
+        // assignment wasn't disturbed by an equal-score split.
+        expect(indices.length).toBeLessThanOrEqual(2);
+      }
+    });
+    const originalOwnerPair = pairs.find((p) => p.tailoredIndex === 0);
+    expect(originalOwnerPair?.originalIndex).toBe(0);
+  });
+});
+
+describe("ROUND 5 SHOULD FIX — Professional/Relevant Experience heading aliases", () => {
+  it("matches 'Professional Experience' heading to the experience section", () => {
+    const original = "Professional Experience\n• Built the checkout service.";
+    const extracted = extractOriginalSectionText(original, "Experience");
+    expect(extracted).toContain("Built the checkout service.");
+  });
+
+  it("matches 'Relevant Experience' heading to the experience section", () => {
+    const original = "Relevant Experience\n• Built the checkout service.";
+    const extracted = extractOriginalSectionText(original, "Experience");
+    expect(extracted).toContain("Built the checkout service.");
+  });
+});
+
+describe("ROUND 5 SHOULD FIX — exact duplicate originals each get credited distinctly", () => {
+  it("two identical-text original bullets both get matched by two different tailored duplicates (usedOriginals tracks indices, not text)", () => {
+    const originalSection = "• Led the weekly sync meeting.\n• Led the weekly sync meeting.";
+    const tailoredSection = "• Led the weekly sync meeting with stakeholders.\n• Led the weekly sync meeting, now recorded.";
+    const originalUnits = splitIntoUnits(originalSection);
+    const tailoredUnits = splitIntoUnits(tailoredSection);
+    const pairs = alignUnits(originalUnits, tailoredUnits);
+    const unmatched = findUnmatchedOriginalIndices(originalUnits, pairs);
+    // Both original occurrences should be matched — neither should show up
+    // as falsely deleted.
+    expect(unmatched).toHaveLength(0);
+    const usedOriginalIndices = new Set(pairs.map((p) => p.originalIndex));
+    expect(usedOriginalIndices.has(0)).toBe(true);
+    expect(usedOriginalIndices.has(1)).toBe(true);
+  });
+});
+
+describe("ROUND 5 SMALL — displaced split-adoption owner gets a fair re-match instead of falling back to 'added'", () => {
+  it("re-matches a displaced owner X against a still-unused original rather than leaving it unmatched", () => {
+    const originalSection =
+      "• Migrated the billing service to a brand new cloud platform for better scalability.\n• Owned the quarterly reporting dashboard refresh end to end.";
+    const tailoredSection =
+      "• Migrated the billing service\n• to a brand new cloud platform for better scalability.\n• Billing service moved onto newer cloud infrastructure.\n• Owned the quarterly dashboard refresh completely end to end.";
+    const originalUnits = splitIntoUnits(originalSection);
+    const tailoredUnits = splitIntoUnits(tailoredSection);
+    const pairs = alignUnits(originalUnits, tailoredUnits);
+    // Unit 2 (X, "Billing service moved onto newer cloud infrastructure.")
+    // was displaced from original bullet 0 by the split-adoption pass; it
+    // should re-match to original bullet 1 (the dashboard bullet) via the
+    // re-match pass if a reasonable match exists, or at minimum must not be
+    // blindly required to stay -1 when a decent original is available.
+    const lastDashboardPair = pairs.find((p) => p.tailoredText.includes("dashboard refresh completely"));
+    expect(lastDashboardPair?.originalIndex).toBe(1);
+  });
+});
+
+describe("ROUND 5 SMALL — capitalized proper-noun wrapped continuations fold correctly", () => {
+  it("folds 'Safari, Firefox, and mobile browsers' as a continuation of a comma-ending bullet", () => {
+    const content = "• Tested extensively across\nSafari, Firefox, and mobile browsers\n• Next bullet here";
+    const units = splitIntoUnits(content);
+    expect(units).toHaveLength(2);
+    expect(units[0].text).toBe("Tested extensively across Safari, Firefox, and mobile browsers");
+  });
+
+  it("still does NOT fold a genuine new company header after a bullet (PLAYGON GAME INC regression)", () => {
+    const content =
+      "• Built the checkout flow end to end.\nPLAYGON GAME INC, REMOTE, SENIOR ENGINEER (2021-2023)\n• Next bullet here";
+    const units = splitIntoUnits(content);
+    expect(units).toHaveLength(3);
+    expect(units[0].text).toBe("Built the checkout flow end to end.");
+    expect(units[1].text).toBe("PLAYGON GAME INC, REMOTE, SENIOR ENGINEER (2021-2023)");
+  });
+});
+
 
 

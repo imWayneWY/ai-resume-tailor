@@ -1,7 +1,19 @@
-import React from "react";
+import React, { useState } from "react";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import ResumeTrackChanges from "../ResumeTrackChanges";
+import ResumeTrackChanges, { type TrackChangesSection } from "../ResumeTrackChanges";
+
+/** Stateful wrapper so interaction tests (edit/restore/revert) actually persist sections across re-renders, like the real page.tsx does. */
+function StatefulResumeTrackChanges({
+  initialSections,
+  originalResume,
+}: {
+  initialSections: TrackChangesSection[];
+  originalResume: string;
+}) {
+  const [sections, setSections] = useState(initialSections);
+  return <ResumeTrackChanges sections={sections} originalResume={originalResume} onSectionsChange={setSections} />;
+}
 
 describe("MUST FIX 2 — Clean mode hides all diff markup", () => {
   it("in Clean mode, no deleted rows, added badge, warning icon, or deleted-section block appear, even with diff data present", async () => {
@@ -136,5 +148,95 @@ describe("ALSO FIX — inline edit textarea has an accessible label", () => {
 
     const textarea = screen.getByRole("textbox", { name: /edit bullet text/i });
     expect(textarea).toBeInTheDocument();
+  });
+});
+
+describe("ROUND 5 MUST FIX 2 — stable keys prevent a stale draft from landing on the wrong bullet", () => {
+  it("saving an editor opened on a distinctive bullet still applies to that bullet after a Restore shifts indices above it", async () => {
+    const sections = [
+      {
+        title: "Experience",
+        content:
+          "• Shipped the distinctive feature Zephyr.\n• Second unrelated bullet.\n• Third unrelated bullet.",
+      },
+    ];
+    // Original has an extra bullet ABOVE the distinctive one that the
+    // tailored content dropped entirely — restoring it will insert a new
+    // unit before the distinctive bullet, shifting its index down.
+    const originalResume =
+      "Experience\n• Dropped bullet that will be restored.\n• Shipped the distinctive feature Zephyr.\n• Second unrelated bullet.\n• Third unrelated bullet.";
+
+    render(
+      <StatefulResumeTrackChanges initialSections={sections} originalResume={originalResume} />
+    );
+
+    const user = userEvent.setup();
+
+    // Open the editor on the distinctive bullet (currently at index 0).
+    const distinctiveButton = screen.getByText(/distinctive feature Zephyr/).closest("button");
+    expect(distinctiveButton).toBeTruthy();
+    await user.click(distinctiveButton!);
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+
+    const textarea = screen.getByRole("textbox", { name: /edit bullet text/i });
+    await user.clear(textarea);
+    await user.type(textarea, "Shipped the distinctive feature Zephyr, rewritten.");
+
+    // Now trigger Restore on the deleted row ABOVE it, which inserts a new
+    // unit and shifts the distinctive bullet's positional index.
+    const deletedRowButton = screen.getByText(/Dropped bullet that will be restored/).closest("button");
+    expect(deletedRowButton).toBeTruthy();
+    await user.click(deletedRowButton!);
+    await user.click(screen.getByRole("button", { name: "Restore" }));
+
+    // Now click Save on the still-open editor for the distinctive bullet.
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    // The saved text must land on the distinctive bullet, not whatever now
+    // occupies its old positional index.
+    expect(screen.getByText(/Shipped the distinctive feature Zephyr/)).toBeInTheDocument();
+    expect(screen.getByText(/, rewritten/)).toBeInTheDocument();
+    expect(screen.queryByText(/^Second unrelated bullet, rewritten/)).not.toBeInTheDocument();
+  });
+});
+
+describe("ROUND 5 SHOULD FIX — empty section keeps a placeholder with Revert available", () => {
+  it("renders a placeholder (not a dead-end blank section) when all units are removed", () => {
+    const sections = [
+      {
+        title: "Summary",
+        content: "",
+      },
+    ];
+    const originalResume = "Summary\nOriginal summary sentence.";
+
+    render(
+      <ResumeTrackChanges sections={sections} originalResume={originalResume} onSectionsChange={() => {}} />
+    );
+
+    // With empty tailored content, there are no UnitRows — but the
+    // deleted-row for the original sentence should still be clickable/visible.
+    expect(screen.getByTestId("deleted-row")).toBeInTheDocument();
+  });
+});
+
+describe("ROUND 5 SMALL — Clean mode reflects the TAILORED text's own bold state, not the original's", () => {
+  it("does NOT render bold in Clean mode when the tailored text stripped the bold markers the original had", async () => {
+    const sections = [
+      {
+        title: "Experience",
+        content: "MICROSOFT, VANCOUVER, SDE2 (2023 - PRESENT)",
+      },
+    ];
+    const originalResume = "Experience\n**MICROSOFT, VANCOUVER, SDE2 (2023 - PRESENT)**";
+
+    render(
+      <ResumeTrackChanges sections={sections} originalResume={originalResume} onSectionsChange={() => {}} />
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Clean" }));
+
+    const el = screen.getByText("MICROSOFT, VANCOUVER, SDE2 (2023 - PRESENT)");
+    expect(el.closest("strong")).toBeNull();
   });
 });

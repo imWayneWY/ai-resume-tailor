@@ -179,7 +179,7 @@ function UnitRow({ diff, isBullet, showChanges, reason, isAdded, onRevert, onEdi
         className="w-full whitespace-pre-wrap rounded-sm text-left text-sm leading-relaxed hover:bg-surface"
       >
         {isBullet && <span className="absolute left-0">•</span>}
-        {diff.isBold ? (
+        {(showChanges ? diff.isBold : diff.tailoredIsBold) ? (
           <strong className="font-semibold">
             {showChanges && isChanged ? (
               <DiffOps ops={diff.ops} />
@@ -444,19 +444,33 @@ export default function ResumeTrackChanges({
         </div>
       </div>
 
-      {sectionDiffs.map(({ section, diffs, originalUnits, unmatchedOriginalIndices }, sectionIndex) => (
+      {sectionDiffs.map(({ section, diffs, originalUnits, unmatchedOriginalIndices }, sectionIndex) => {
+        const occurrenceCounts = new Map<string, number>();
+        const stableKeys = diffs.map((diff) => {
+          const fingerprint = `${diff.originalIndex === -1 ? "add" : "orig"}:${sectionDiffs[sectionIndex].tailoredUnits[diff.tailoredIndex]?.isBullet ?? false}:${diff.tailoredText}`;
+          const occurrence = occurrenceCounts.get(fingerprint) ?? 0;
+          occurrenceCounts.set(fingerprint, occurrence + 1);
+          return `${fingerprint}:${occurrence}`;
+        });
+        const isEmptySection = diffs.length === 0 && unmatchedOriginalIndices.length === 0;
+        return (
         <div key={section.title} className={sectionIndex > 0 ? "mt-6" : ""}>
           <h3 className="mb-3 border-b border-border pb-1 text-lg font-semibold tracking-tight">
             {section.title}
           </h3>
           <div>
+            {isEmptySection && (
+              <div className="mb-1 text-sm italic text-muted" data-testid="empty-section-placeholder">
+                (empty)
+              </div>
+            )}
             {diffs.map((diff, unitIndex) => {
               const unit = sectionDiffs[sectionIndex].tailoredUnits[unitIndex];
               const isBullet = unit?.isBullet ?? false;
               const isAdded = diff.originalIndex === -1;
               return (
                 <UnitRow
-                  key={unitIndex}
+                  key={stableKeys[unitIndex]}
                   diff={diff}
                   isBullet={isBullet}
                   showChanges={showChanges}
@@ -487,7 +501,8 @@ export default function ResumeTrackChanges({
               })}
           </div>
         </div>
-      ))}
+        );
+      })}
 
       {showChanges &&
         missingSections.map(({ heading, content, insertIndex }) => (

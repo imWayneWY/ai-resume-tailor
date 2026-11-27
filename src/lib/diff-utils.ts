@@ -191,7 +191,8 @@ function isMostlyUppercase(line: string): boolean {
  */
 function looksLikeContinuation(prevLine: string, candidate: string): boolean {
   const prevTrimmed = prevLine.trim();
-  if (/[.!?:]$/.test(prevTrimmed)) return false;
+  const prevEndsWithTerminalPunct = /[.!?:]$/.test(prevTrimmed);
+  if (prevEndsWithTerminalPunct) return false;
   const candTrimmed = candidate.trim();
   if (candTrimmed.length === 0) return false;
   if (candTrimmed.startsWith("**")) return false;
@@ -201,7 +202,15 @@ function looksLikeContinuation(prevLine: string, candidate: string): boolean {
   if (CONTINUATION_HEADING_TERMS.has(headingCandidate)) return false;
   const firstChar = candTrimmed.charAt(0);
   if (firstChar.toLowerCase() === firstChar.toUpperCase()) return false; // not a letter
-  return firstChar === firstChar.toLowerCase();
+  if (firstChar === firstChar.toLowerCase()) return true;
+  // Candidate starts with a capital letter. Still allow folding when the
+  // previous line ends mid-phrase (comma, or no terminal punctuation at
+  // all — already guaranteed by the prevEndsWithTerminalPunct check above)
+  // — e.g. a genuine wrapped continuation that's itself a list of proper
+  // nouns ("Safari, Firefox, and mobile browsers"). The date-range,
+  // mostly-uppercase, and heading-term checks above already guard against
+  // folding an actual new entry/section header.
+  return prevTrimmed.endsWith(",") || !/[,.!?:]$/.test(prevTrimmed);
 }
 
 /**
@@ -215,6 +224,14 @@ function looksLikeContinuation(prevLine: string, candidate: string): boolean {
 export function splitIntoUnits(content: string): ContentUnit[] {
   if (!content) return [];
   const units: ContentUnit[] = [];
+  // NOTE: callers are expected to normalize CRLF (`\r\n`) to `\n` before
+  // content ever reaches this function (see normalizeLineEndings at the
+  // React-state entry points). We still split on /\r?\n/ defensively, but
+  // the lineStarts offsets below assume a single-character `\n` separator
+  // — if `content` still contains `\r\n`, pre-normalize it here so offsets
+  // never drift.
+  const normalizedContent = content.includes("\r\n") ? content.replace(/\r\n/g, "\n") : content;
+  content = normalizedContent;
   const lines = content.split(/\r?\n/);
   // Compute each line's start offset in `content` up front so we can safely
   // merge a bullet line with an immediately-following non-bullet
@@ -226,7 +243,7 @@ export function splitIntoUnits(content: string): ContentUnit[] {
     let offset = 0;
     for (const line of lines) {
       lineStarts.push(offset);
-      offset += line.length + 1; // +1 for the stripped newline
+      offset += line.length + 1; // +1 for the stripped newline (content is now \n-only)
     }
   }
   let cursor = 0;
@@ -476,6 +493,7 @@ export function alignUnits(originalUnits: ContentUnit[], tailoredUnits: ContentU
   const assignedOriginal = new Map<number, number>(); // tailoredIndex -> originalIndex
   const assignedScore = new Map<number, number>(); // tailoredIndex -> score
   const usedOriginals = new Set<number>();
+  const displacedOwners = new Set<number>(); // tailoredIndex of units displaced by split-adoption, eligible for re-match
   for (const c of candidates) {
     if (assignedOriginal.has(c.tailoredIndex) || usedOriginals.has(c.originalIndex)) continue;
     assignedOriginal.set(c.tailoredIndex, c.originalIndex);
@@ -501,7 +519,7 @@ export function alignUnits(originalUnits: ContentUnit[], tailoredUnits: ContentU
       // original must NOT be stolen into this split.
       const tScore = assignedOriginal.get(t) !== o ? assignedScore.get(t) ?? -1 : -1;
       const t1Score = assignedOriginal.get(t + 1) !== o ? assignedScore.get(t + 1) ?? -1 : -1;
-      if (tScore >= MIN_SPLIT_COMBINED_SIMILARITY || t1Score >= MIN_SPLIT_COMBINED_SIMILARITY) continue;
+      if (tScore >= combinedScore || t1Score >= combinedScore) continue;
       // Don't steal this original from a DIFFERENT adjacent pair that
       // already has a stronger combined claim on it.
       const existingOwnerT = assignedOriginal.get(t) === o ? t : undefined;
@@ -523,6 +541,7 @@ export function alignUnits(originalUnits: ContentUnit[], tailoredUnits: ContentU
           usedOriginals.delete(o);
           assignedOriginal.delete(owner);
           assignedScore.delete(owner);
+          displacedOwners.add(owner);
         }
       }
       // Release any originals these two previously claimed (they're
@@ -536,7 +555,32 @@ export function alignUnits(originalUnits: ContentUnit[], tailoredUnits: ContentU
       assignedScore.set(t, combinedScore);
       assignedScore.set(t + 1, combinedScore);
       usedOriginals.add(o);
+      displacedOwners.delete(t);
+      displacedOwners.delete(t + 1);
       break;
+    }
+  }
+
+  // 3. Give each displaced owner (a unit that lost its original to a
+  // genuine split-adoption in step 2) a fair chance to re-match against
+  // any ORIGINAL units still unclaimed after the split-adoption pass —
+  // it's a rewrite of real original content, not genuinely fabricated,
+  // so it shouldn't be mislabeled as "added" if a reasonable match exists.
+  for (const t of Array.from(displacedOwners)) {
+    let bestOriginal = -1;
+    let bestScore = -1;
+    for (let o = 0; o < originalUnits.length; o++) {
+      if (usedOriginals.has(o)) continue;
+      const score = similarity(originalUnits[o].text, tailoredUnits[t].text);
+      if (score >= MIN_ALIGNMENT_SIMILARITY && score > bestScore) {
+        bestScore = score;
+        bestOriginal = o;
+      }
+    }
+    if (bestOriginal !== -1) {
+      assignedOriginal.set(t, bestOriginal);
+      assignedScore.set(t, bestScore);
+      usedOriginals.add(bestOriginal);
     }
   }
 
@@ -703,8 +747,10 @@ export interface UnitDiff {
   ops: WordDiffOp[];
   changed: boolean;
   warn: boolean;
-  /** Whether the unit (original and/or tailored raw text) is a bold `**...**`-wrapped header. Applied to the unit as a whole, not per diff-op, so a changed bold header always renders fully bold. */
+  /** Whether the unit (original and/or tailored raw text) is a bold `**...**`-wrapped header. Applied to the unit as a whole, not per diff-op, so a changed bold header always renders fully bold. Used in Show-changes mode. */
   isBold: boolean;
+  /** Whether the TAILORED text itself is bold-wrapped. Used in Clean mode specifically, so Clean mode always matches the PDF export (which reads the tailored text's own bold-wrapping, not the original's). */
+  tailoredIsBold: boolean;
 }
 
 const BOLD_WRAPPER_RE = /^\*\*([\s\S]+)\*\*$/;
@@ -741,6 +787,7 @@ export function diffAlignedPair(pair: AlignedPair): UnitDiff {
     changed,
     warn,
     isBold,
+    tailoredIsBold,
   };
 }
 
@@ -748,7 +795,7 @@ export function diffAlignedPair(pair: AlignedPair): UnitDiff {
 
 const SECTION_HEADING_ALIASES: Record<string, string[]> = {
   summary: ["summary", "profile", "objective"],
-  experience: ["experience", "work experience", "work history", "employment"],
+  experience: ["experience", "work experience", "work history", "employment", "professional experience", "relevant experience"],
   education: ["education"],
   skills: ["skills", "technical skills", "technologies", "tech stack", "core competencies"],
   projects: ["projects"],

@@ -1,7 +1,7 @@
 import React, { type ReactNode } from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import ResultPage from "../page";
+import ResultPage, { type Section } from "../page";
 
 // ---------- mocks ----------
 

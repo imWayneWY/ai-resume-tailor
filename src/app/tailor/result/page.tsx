@@ -6,9 +6,14 @@ import FitSummary, { type FitSummaryKeyword } from "@/components/FitSummary";
 import MissingKeywords, { type MissingKeywordItem, type ConfirmedFactEntry } from "@/components/MissingKeywords";
 import ResumeTrackChanges from "@/components/ResumeTrackChanges";
 
-interface Section {
+export interface Section {
   title: string;
   content: string;
+}
+
+/** Normalizes all line endings to `\n` so splitIntoUnits/diff-utils never has to deal with CRLF offset drift. */
+function normalizeLineEndings(text: string): string {
+  return text.replace(/\r\n/g, "\n");
 }
 
 interface Change {
@@ -277,8 +282,8 @@ export default function ResultPage() {
       }
       parsed.validation = normalizeValidation(parsed.validation);
       setResult(parsed);
-      setEditableSections(parsed.sections.map((s) => ({ ...s })));
-      setOriginalResume(sessionStorage.getItem("tailorOriginalResume") || "");
+      setEditableSections(parsed.sections.map((s) => ({ ...s, content: normalizeLineEndings(s.content) })));
+      setOriginalResume(normalizeLineEndings(sessionStorage.getItem("tailorOriginalResume") || ""));
       setJobDescription(sessionStorage.getItem("tailorJobDescription") || "");
 
       if (typeof parsed.jobTitle === "string" && parsed.jobTitle.trim()) {
@@ -384,7 +389,7 @@ export default function ResultPage() {
 
         data.validation = normalizeValidation(data.validation);
         setResult(data);
-        setEditableSections(data.sections.map((s) => ({ ...s })));
+        setEditableSections(data.sections.map((s) => ({ ...s, content: normalizeLineEndings(s.content) })));
         sessionStorage.setItem("tailorResult", JSON.stringify(data));
 
         if (typeof data.jobTitle === "string" && data.jobTitle.trim()) {

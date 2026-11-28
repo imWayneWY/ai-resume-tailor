@@ -195,6 +195,9 @@ interface TailorResult {
     droppedSkills: string[];
     skillsSectionNotFound: boolean;
   };
+  restoredSkills?: string[];
+  repairedBullets?: string[];
+  restorationNote?: string;
 }
 
 function normalizeValidation(
@@ -571,6 +574,16 @@ export default function ResultPage() {
         </div>
       )}
 
+      {/* Restoration note: skills/facts the deterministic repair passes restored after the model dropped them. */}
+      {result.restorationNote && (
+        <div
+          className="mb-6 rounded-md border border-accent/30 bg-accent/5 p-3 text-sm text-foreground sm:mb-8"
+          data-testid="restoration-note"
+        >
+          {result.restorationNote}
+        </div>
+      )}
+
       {/* Personal info + job title (compact header form fields) */}
       <div className="mb-6 grid grid-cols-1 gap-4 sm:mb-8 sm:grid-cols-2">
         <div className="rounded-lg border border-border bg-card p-4">
@@ -666,6 +679,8 @@ export default function ResultPage() {
           originalResume={originalResume}
           changes={result.changes}
           onSectionsChange={setEditableSections}
+          personalInfo={personalInfo}
+          jobTitle={jobTitle}
         />
       </div>
 

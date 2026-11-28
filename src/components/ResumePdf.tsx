@@ -5,6 +5,9 @@ import {
   Text,
   StyleSheet,
 } from "@react-pdf/renderer";
+import { isEntryHeader, stripBoldMarkers, parseInlineMarkdown } from "@/lib/resume-layout";
+
+export { isEntryHeader, stripBoldMarkers };
 
 export interface PdfSection {
   title: string;
@@ -88,14 +91,6 @@ export function pickDensity(estimatedLines: number): Density | null {
     if (estimatedLines <= preset.capacity) return preset;
   }
   return null;
-}
-
-/** An entry header like "**Microsoft**, Vancouver - Senior Engineer (2020-2024)". */
-export function isEntryHeader(line: string): boolean {
-  const trimmed = line.trim();
-  if (!trimmed.startsWith("**")) return false;
-  if (/^[\u2022\-*]\s+/.test(trimmed)) return false;
-  return /^\*\*[^*]+\*\*/.test(trimmed);
 }
 
 const styles = StyleSheet.create({
@@ -188,18 +183,17 @@ const styles = StyleSheet.create({
  * Parse inline **bold** markers into mixed Text spans.
  */
 function renderInlineMarkdown(text: string) {
-  const parts = text.split(/(\*\*.*?\*\*)/g);
-  if (parts.length === 1) return text;
-  return parts.map((part, i) => {
-    if (part.startsWith("**") && part.endsWith("**")) {
-      return (
-        <Text key={i} style={styles.boldText}>
-          {part.slice(2, -2)}
-        </Text>
-      );
-    }
-    return <Text key={i}>{part}</Text>;
-  });
+  const segments = parseInlineMarkdown(text);
+  if (segments.length <= 1 && !segments.some((s) => s.bold)) return text;
+  return segments.map((part, i) =>
+    part.bold ? (
+      <Text key={i} style={styles.boldText}>
+        {part.text}
+      </Text>
+    ) : (
+      <Text key={i}>{part.text}</Text>
+    )
+  );
 }
 
 function renderContent(content: string, density?: Density) {
@@ -234,11 +228,6 @@ function renderContent(content: string, density?: Density) {
       </Text>
     );
   });
-}
-
-/** Remove ** markers; the whole line is already styled bold. */
-export function stripBoldMarkers(text: string): string {
-  return text.replace(/\*\*(.*?)\*\*/g, "$1");
 }
 
 export default function ResumePdf({

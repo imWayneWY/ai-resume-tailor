@@ -4,6 +4,7 @@ import type React from "react";
 import { useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import type { KeywordItem } from "@/app/api/extract-keywords/route";
+import { normalizeResumeText } from "@/lib/resume-text-normalizer";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
@@ -142,9 +143,11 @@ export default function TailorPage() {
         })
         .catch(() => null);
 
+      const normalizedResume = normalizeResumeText(resume);
+
       const tailorPromise = async (keywords: KeywordItem[] | null) => {
         const requestBody: Record<string, unknown> = {
-          resume,
+          resume: normalizedResume,
           jobDescription,
           generateCoverLetter,
         };
@@ -192,7 +195,7 @@ export default function TailorPage() {
       }
 
       sessionStorage.setItem("tailorResult", JSON.stringify(data));
-      sessionStorage.setItem("tailorOriginalResume", resume);
+      sessionStorage.setItem("tailorOriginalResume", normalizedResume);
       sessionStorage.setItem("tailorJobDescription", jobDescription);
 
       if (extractedKeywords) {

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ResumeTrackChanges, { type TrackChangesSection } from "../ResumeTrackChanges";
 
@@ -52,7 +52,7 @@ describe("MUST FIX 4 — bold markup renders as <strong>, not raw asterisks", ()
         content: "**MICROSOFT, VANCOUVER, SDE2 (2023 - PRESENT)**",
       },
     ];
-    const originalResume = "Experience\n**MICROSOFT, VANCOUVER, SDE2 (2023 - PRESENT)**";
+    const originalResume = "Experience\n**MICROSOFT, VANCOUVER, SDE2 (2023 - PRESENT)**\n• Built things.\n\nEducation\nState University, BS Computer Science";
 
     render(
       <ResumeTrackChanges sections={sections} originalResume={originalResume} onSectionsChange={() => {}} />
@@ -70,7 +70,7 @@ describe("MUST FIX 4 — bold markup renders as <strong>, not raw asterisks", ()
         content: "**MICROSOFT, VANCOUVER, SDE2 (2023 - PRESENT)**",
       },
     ];
-    const originalResume = "Experience\nSome unrelated original text.";
+    const originalResume = "Experience\nSome unrelated original text.\n• Some bullet.\n\nEducation\nState University, BS Computer Science";
 
     render(
       <ResumeTrackChanges sections={sections} originalResume={originalResume} onSectionsChange={() => {}} />
@@ -89,13 +89,12 @@ describe("MUST FIX 4 — bold markup renders as <strong>, not raw asterisks", ()
         content: "**MICROSOFT, VANCOUVER, Senior SDE2 (2023 - PRESENT)**",
       },
     ];
-    const originalResume = "Experience\n**MICROSOFT, VANCOUVER, SDE2 (2023 - PRESENT)**";
+    const originalResume = "Experience\n**MICROSOFT, VANCOUVER, SDE2 (2023 - PRESENT)**\n• Built things.\n\nEducation\nState University, BS Computer Science";
 
     render(
       <ResumeTrackChanges sections={sections} originalResume={originalResume} onSectionsChange={() => {}} />
     );
 
-    // No raw, unmatched ** markers anywhere in the rendered output.
     expect(screen.queryByText(/\*\*/)).not.toBeInTheDocument();
     // The whole header unit is still rendered with bold styling.
     const container = screen.getByText("MICROSOFT,", { exact: false });
@@ -134,7 +133,7 @@ describe("ALSO FIX — inline edit textarea has an accessible label", () => {
         content: "• Built the checkout service.",
       },
     ];
-    const originalResume = "Experience\n• Built and deployed the checkout service used by 10,000 customers daily.";
+    const originalResume = "Experience\n• Built and deployed the checkout service used by 10,000 customers daily.\n\nEducation\nState University, BS Computer Science";
 
     render(
       <ResumeTrackChanges sections={sections} originalResume={originalResume} onSectionsChange={() => {}} />
@@ -164,7 +163,7 @@ describe("ROUND 5 MUST FIX 2 — stable keys prevent a stale draft from landing 
     // tailored content dropped entirely — restoring it will insert a new
     // unit before the distinctive bullet, shifting its index down.
     const originalResume =
-      "Experience\n• Dropped bullet that will be restored.\n• Shipped the distinctive feature Zephyr.\n• Second unrelated bullet.\n• Third unrelated bullet.";
+      "Experience\n• Dropped bullet that will be restored.\n• Shipped the distinctive feature Zephyr.\n• Second unrelated bullet.\n• Third unrelated bullet.\n\nEducation\nState University, BS Computer Science";
 
     render(
       <StatefulResumeTrackChanges initialSections={sections} originalResume={originalResume} />
@@ -187,7 +186,8 @@ describe("ROUND 5 MUST FIX 2 — stable keys prevent a stale draft from landing 
     const deletedRowButton = screen.getByText(/Dropped bullet that will be restored/).closest("button");
     expect(deletedRowButton).toBeTruthy();
     await user.click(deletedRowButton!);
-    await user.click(screen.getByRole("button", { name: "Restore" }));
+    const deletedRowContainer = deletedRowButton!.closest("div.relative") as HTMLElement;
+    await user.click(within(deletedRowContainer).getByRole("button", { name: "Restore" }));
 
     // Now click Save on the still-open editor for the distinctive bullet.
     await user.click(screen.getByRole("button", { name: "Save" }));
@@ -208,7 +208,7 @@ describe("ROUND 5 SHOULD FIX — empty section keeps a placeholder with Revert a
         content: "",
       },
     ];
-    const originalResume = "Summary\nOriginal summary sentence.";
+    const originalResume = "Summary\nOriginal summary sentence.\n\nExperience\n• Built things.";
 
     render(
       <ResumeTrackChanges sections={sections} originalResume={originalResume} onSectionsChange={() => {}} />
@@ -231,7 +231,7 @@ describe("ROUND 6 SMALL — empty-section placeholder is interactive and lets th
     // No "Projects" content in the original resume either, so there's no
     // unmatched original unit — this exercises the genuinely-empty-section
     // branch (isEmptySection), not the deleted-row branch.
-    const originalResume = "Experience\n• Built the checkout service.";
+    const originalResume = "Experience\n• Built the checkout service.\n\nEducation\nState University, BS Computer Science";
 
     render(
       <ResumeTrackChanges sections={sections} originalResume={originalResume} onSectionsChange={() => {}} />
@@ -248,7 +248,7 @@ describe("ROUND 6 SMALL — empty-section placeholder is interactive and lets th
         content: "",
       },
     ];
-    const originalResume = "Experience\n• Built the checkout service.";
+    const originalResume = "Experience\n• Built the checkout service.\n\nEducation\nState University, BS Computer Science";
     const onSectionsChange = jest.fn();
 
     render(
@@ -294,6 +294,25 @@ describe("ROUND 5 SMALL — Clean mode reflects the TAILORED text's own bold sta
   });
 });
 
+describe("ROUND 7 — identical tailored resume produces no warnings and no deleted rows", () => {
+  it("when the tailored content is byte-identical to the original, there are no ⚠ icons and no deleted rows", () => {
+    const identicalContent =
+      "**Acme Inc** — Engineer (2021 - 2023)\n• Built a checkout service.\n• Migrated billing to microservices.";
+    const sections = [
+      { title: "Experience", content: identicalContent },
+      { title: "Education", content: "State University, BS Computer Science" },
+    ];
+    const originalResume = `Experience\n${identicalContent}\n\nEducation\nState University, BS Computer Science`;
+
+    render(
+      <ResumeTrackChanges sections={sections} originalResume={originalResume} onSectionsChange={() => {}} />
+    );
+
+    expect(screen.queryByText("⚠")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("deleted-row")).not.toBeInTheDocument();
+  });
+});
+
 describe("ROUND 7 — partially-bold headers render correctly when the text inside the bold span changes", () => {
   it("'**Microsoft** | SDE2 | 2023 - Present' with a changed job title inside the bold span shows no raw ** and the bold word is still wrapped in <strong>", () => {
     // This header is only PARTIALLY bold (just "Microsoft"), so
@@ -309,7 +328,7 @@ describe("ROUND 7 — partially-bold headers render correctly when the text insi
         content: "**Microsoft** | Senior SDE2 | 2023 - Present",
       },
     ];
-    const originalResume = "Experience\n**Microsoft** | SDE2 | 2023 - Present";
+    const originalResume = "Experience\n**Microsoft** | SDE2 | 2023 - Present\n• Built things.\n\nEducation\nState University, BS Computer Science";
 
     render(
       <ResumeTrackChanges sections={sections} originalResume={originalResume} onSectionsChange={() => {}} />

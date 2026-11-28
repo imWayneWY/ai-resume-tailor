@@ -9,6 +9,7 @@
 
 import { parseSkillItems, extractSkillsSectionFromRawText } from "@/lib/resume-validator";
 import { splitIntoUnits, alignUnits, shouldWarnOnRemoval, replaceUnitSpan, wordDiff, type ContentUnit } from "@/lib/diff-utils";
+import { isEntryHeader } from "@/lib/resume-layout";
 
 export interface TailoredSection {
   title: string;
@@ -134,11 +135,40 @@ export interface FlaggedBullet {
 export type RepairLlmCaller = (flagged: FlaggedBullet[]) => Promise<RepairCallResult>;
 
 /**
+ * Finds the entry-header text (e.g. "**Acme Inc** — Engineer (2021-2023)")
+ * that a given unit index falls under, by scanning backwards through
+ * `units` for the nearest preceding entryHeader-classified line. Returns
+ * `null` when the unit isn't under any entry header (e.g. a section with no
+ * entry headers at all, like a flat bullet list) — in that case, units are
+ * only considered "the same entry" as other headerless units in the SAME
+ * section, never cross-matched with a headered section.
+ */
+function entryHeaderForUnit(units: ContentUnit[], unitIndex: number): string | null {
+  for (let i = unitIndex; i >= 0; i--) {
+    if (!units[i].isBullet && isEntryHeader(units[i].raw)) {
+      return units[i].raw.trim();
+    }
+  }
+  return null;
+}
+
+/**
  * Finds bullets whose tailored text dropped a fact (per shouldWarnOnRemoval),
  * by aligning each original bullet (from the NORMALIZED original, split via
  * diff-utils's splitIntoUnits) to its corresponding tailored bullet using
  * diff-utils's existing alignUnits — reusing the SAME alignment heuristic
  * used by the UI, never inventing a new one.
+ *
+ * Guard: alignUnits aligns by word-overlap similarity across the WHOLE
+ * normalized original, with no awareness of which job/entry a bullet
+ * belongs to. Two similar bullets from DIFFERENT jobs can be matched to
+ * each other. If that happens here, the repair pass could replace a bullet
+ * in one job with (or fall back to) the original text from a DIFFERENT
+ * job — a silent cross-job corruption that's worse than leaving the
+ * warning in place. So: only accept an alignment pair when the original
+ * and tailored bullet fall under the SAME entry header (by exact text) in
+ * the same tailored section. If they don't match, skip repairing this
+ * bullet entirely and leave the tailored text as-is.
  */
 function findFlaggedBullets(
   normalizedOriginal: string,
@@ -166,6 +196,13 @@ function findFlaggedBullets(
       const tailoredUnit = tailoredUnits[pair.tailoredIndex];
       if (!originalUnit || !tailoredUnit) continue;
       if (!tailoredUnit.isBullet && !originalUnit.isBullet) continue;
+
+      // Guard 1: only repair when both sides fall under the same entry
+      // header (same job/entry). Skip otherwise rather than risk writing
+      // one job's content into another.
+      const tailoredEntryHeader = entryHeaderForUnit(tailoredUnits, pair.tailoredIndex);
+      const originalEntryHeader = entryHeaderForUnit(originalUnits, pair.originalIndex);
+      if (tailoredEntryHeader !== originalEntryHeader) continue;
 
       // Derive the removed text the same way diff-utils's diffAlignedPair
       // does, via wordDiff — but we only need shouldWarnOnRemoval's verdict
@@ -202,6 +239,12 @@ function findFlaggedBullets(
  * fails, errors, or the repaired bullet still drops the phrase. Never
  * throws — this is a best-effort pass that must not fail the whole
  * tailoring request.
+ *
+ * Guard 2: never write a candidate replacement (repaired OR fallback
+ * original) that already appears, verbatim, somewhere else in the tailored
+ * resume — that would duplicate a bullet instead of fixing one. If the
+ * chosen candidate for a bullet is already present elsewhere, skip
+ * repairing that bullet and leave its tailored text untouched.
  */
 export async function repairDroppedFacts(
   normalizedOriginal: string,
@@ -227,6 +270,18 @@ export async function repairDroppedFacts(
 
     const nextSections = tailoredSections.map((s) => ({ ...s }));
     const repairedBullets: string[] = [];
+
+    // Build a set of every bullet's normalized text currently in the
+    // tailored resume, for the duplicate-detection guard below. Checked
+    // against each candidate BEFORE it's written, and updated as bullets
+    // are replaced so a candidate can't collide with another repair from
+    // this same pass either.
+    const existingBulletTexts = new Set<string>();
+    for (const section of nextSections) {
+      for (const unit of splitIntoUnits(section.content)) {
+        if (unit.isBullet) existingBulletTexts.add(unit.text.trim().toLowerCase());
+      }
+    }
 
     // Group flagged bullets by section so we can replace each unit's exact
     // span once, working through each section's content independently.
@@ -263,7 +318,20 @@ export async function repairDroppedFacts(
             finalText = candidate.trim();
           }
         }
+
+        // Guard 2: if the chosen replacement (repaired or fallback-original)
+        // already appears, verbatim, as another bullet in the tailored
+        // resume, writing it here would duplicate content rather than fix
+        // it — skip this bullet and leave its tailored text as-is.
+        const normalizedFinal = finalText.trim().toLowerCase();
+        const normalizedCurrent = f.unit.text.trim().toLowerCase();
+        if (normalizedFinal !== normalizedCurrent && existingBulletTexts.has(normalizedFinal)) {
+          continue;
+        }
+
         content = replaceUnitSpan(content, f.unit, finalText);
+        existingBulletTexts.delete(normalizedCurrent);
+        existingBulletTexts.add(normalizedFinal);
         repairedBullets.push(finalText);
       }
       nextSections[sectionIndex] = { ...nextSections[sectionIndex], content };

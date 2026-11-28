@@ -131,4 +131,47 @@ describe("repairDroppedFacts (part C)", () => {
     expect(callRepairLlm).not.toHaveBeenCalled();
     expect(repairedBullets).toEqual([]);
   });
+
+  it("never replaces a bullet across jobs, even when alignment would otherwise match it to a similar bullet in a different job", async () => {
+    // Two jobs each have a bullet about "the checkout service" — similar
+    // enough in wording that word-overlap alignment could match the
+    // tailored "Acme" bullet to the ORIGINAL "Beta" bullet (or vice versa)
+    // if cross-job scoping weren't enforced. Job Acme's bullet also lost a
+    // real fact ("for 50K monthly users"), so it SHOULD be a repair
+    // candidate — but only if it can be safely matched within its OWN job.
+    const normalizedOriginal =
+      "Experience\n**Acme Inc** — Engineer (2021 - 2023)\n• Built the checkout service for 50K monthly users.\n\n**Beta Systems** — Engineer (2019 - 2021)\n• Built the checkout service for the mobile app.";
+    const tailoredSections: TailoredSection[] = [
+      {
+        title: "Experience",
+        content:
+          "**Acme Inc** — Engineer (2021 - 2023)\n• Built the checkout service.\n\n**Beta Systems** — Engineer (2019 - 2021)\n• Built the checkout service for the mobile app.",
+      },
+    ];
+
+    const callRepairLlm = jest.fn(
+      async (flagged): Promise<RepairCallResult> => {
+        const repaired = new Map<number, string>();
+        for (const f of flagged) {
+          repaired.set(f.id, "Built the checkout service for 50K monthly users.");
+        }
+        return { repaired };
+      }
+    );
+
+    const { sections } = await repairDroppedFacts(normalizedOriginal, tailoredSections, callRepairLlm);
+    const content = sections.find((s) => s.title === "Experience")!.content;
+
+    // Beta's bullet (which never dropped anything) must be completely
+    // untouched — no cross-job replacement.
+    expect(content).toContain("Built the checkout service for the mobile app.");
+    // There must be exactly ONE "Built the checkout service for 50K
+    // monthly users." bullet — never duplicated, and Acme's bullet must
+    // end up either correctly repaired OR left as the original tailored
+    // text, never corrupted with Beta's content.
+    const occurrences = (content.match(/Built the checkout service for 50K monthly users\./g) ?? []).length;
+    expect(occurrences).toBeLessThanOrEqual(1);
+    const betaOccurrences = (content.match(/Built the checkout service for the mobile app\./g) ?? []).length;
+    expect(betaOccurrences).toBe(1);
+  });
 });

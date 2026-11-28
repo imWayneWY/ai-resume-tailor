@@ -5,6 +5,7 @@ import { curveScore } from "@/lib/score-curve";
 import { createRateLimiter, getClientIp } from "@/lib/rate-limit";
 import { validateTailoredResume } from "@/lib/resume-validator";
 import { verifySupportedKeywords, type SupportedKeyword } from "@/lib/evidence-verifier";
+import { restoreMissingSkills, repairDroppedFacts, type FlaggedBullet } from "@/lib/resume-repair";
 
 const rateLimiter = createRateLimiter({ limit: 20, windowMs: 60_000 });
 const globalLimiter = createRateLimiter({ limit: 50, windowMs: 60_000 });
@@ -33,7 +34,7 @@ A "fact" is: employer, title, dates, product, feature, technology, scope, number
 - Keep every job and every bullet from the original (do not drop content).
 - Within each job, put the bullets most relevant to the JD first.
 - Reorder skills so the JD-relevant ones lead each line. Group skills by real category (Languages, Frontend, Backend & Cloud, Testing, Tools). Never create categories like "Concepts", "Core Competencies", or "Soft Skills".
-- Keep every skill listed in the original Skills section. You may regroup and reorder them into different categories, but never drop one.
+- Keep every skill listed in the original Skills section. You may regroup and reorder them into different categories, but never drop one. The Skills section must list every skill from the original resume. You may regroup and reorder them, but never remove any.
 - The summary may emphasize the parts of the candidate's background most relevant to the JD.
 
 ## 3b. Preserve specific details
@@ -259,6 +260,72 @@ async function callAzureOpenAI(
   }
 
   return parseAndValidateResponse(text, originalResume);
+}
+
+/**
+ * Part C's single extra Azure OpenAI call. Called with ALL flagged bullets
+ * at once (never more than one call per tailoring run). Returns a map of
+ * flagged-bullet id -> repaired text. Any failure (network, bad JSON,
+ * missing fields) propagates as a thrown error so the caller
+ * (repairDroppedFacts) falls back to the original bullet text.
+ */
+async function callRepairLlm(
+  endpoint: string,
+  apiKey: string,
+  deployment: string,
+  flagged: FlaggedBullet[]
+): Promise<{ repaired: Map<number, string> }> {
+  const url = buildAzureUrl(endpoint, deployment);
+
+  const bulletsPayload = flagged.map((f) => ({
+    id: f.id,
+    original: f.originalText,
+    tailored: f.tailoredText,
+    droppedPhrases: [f.droppedPhrase],
+  }));
+
+  const systemPrompt =
+    "Return each tailored bullet revised so every listed phrase is included again. Change nothing else. Do not add new facts or numbers. " +
+    'Return only JSON matching this shape: { "repairs": [{ "id": number, "text": string }] }';
+
+  const userPrompt = `Flagged bullets (JSON):\n${JSON.stringify(bulletsPayload, null, 2)}`;
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "api-key": apiKey,
+    },
+    body: JSON.stringify({
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      temperature: 0,
+      top_p: 1,
+      response_format: { type: "json_object" },
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Repair LLM call failed with status ${response.status}`);
+  }
+
+  const data = await response.json();
+  const text = data?.choices?.[0]?.message?.content;
+  if (!text) {
+    throw new Error("Repair LLM call returned no content");
+  }
+
+  const parsed = JSON.parse(text);
+  const repairs = Array.isArray(parsed?.repairs) ? parsed.repairs : [];
+  const repaired = new Map<number, string>();
+  for (const r of repairs) {
+    if (r && typeof r.id === "number" && typeof r.text === "string" && r.text.trim()) {
+      repaired.set(r.id, r.text);
+    }
+  }
+  return { repaired };
 }
 
 function parseAndValidateResponse(text: string, originalResume: string): NextResponse | ParsedResult {
@@ -496,6 +563,35 @@ export async function POST(request: NextRequest) {
       return result;
     }
 
+    // Part B: deterministic skill restoration — never fail the request because of it.
+    let restoredSkills: string[] = [];
+    try {
+      const skillRestoration = restoreMissingSkills(resume, result.sections);
+      result.sections = skillRestoration.sections;
+      restoredSkills = skillRestoration.restoredSkills;
+    } catch (err) {
+      console.debug(
+        "[api/tailor] skill restoration failed, continuing without it",
+        err instanceof Error ? `${err.name}: ${err.message}` : String(err)
+      );
+    }
+
+    // Part C: best-effort fact-repair pass (one extra LLM call max) — must
+    // run BEFORE validation/diffing so the UI sees the repaired text.
+    let repairedBullets: string[] = [];
+    try {
+      const repairResult = await repairDroppedFacts(resume, result.sections, (flagged) =>
+        callRepairLlm(endpoint, apiKey, deployment, flagged)
+      );
+      result.sections = repairResult.sections;
+      repairedBullets = repairResult.repairedBullets;
+    } catch (err) {
+      console.debug(
+        "[api/tailor] fact-repair pass failed, continuing without it",
+        err instanceof Error ? `${err.name}: ${err.message}` : String(err)
+      );
+    }
+
     // Scoring is a nice-to-have: never fail a successful tailoring because of it.
     const scores = computeScores(result, resume, jobDescription, targetKeywords);
 
@@ -512,7 +608,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ ...result, ...scores, validation });
+    const restorationParts: string[] = [];
+    if (restoredSkills.length > 0) {
+      restorationParts.push(
+        `Restored ${restoredSkills.length} skill${restoredSkills.length === 1 ? "" : "s"} the AI removed: ${restoredSkills.join(", ")}.`
+      );
+    }
+    if (repairedBullets.length > 0) {
+      restorationParts.push(
+        `Fixed ${repairedBullets.length} bullet${repairedBullets.length === 1 ? "" : "s"} that dropped facts.`
+      );
+    }
+    const restorationNote = restorationParts.length > 0 ? restorationParts.join(" ") : undefined;
+
+    return NextResponse.json({
+      ...result,
+      ...scores,
+      validation,
+      restoredSkills,
+      repairedBullets,
+      restorationNote,
+    });
   } catch (err) {
     console.debug(
       "[api/tailor] unhandled failure",

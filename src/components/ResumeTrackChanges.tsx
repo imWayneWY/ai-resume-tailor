@@ -16,6 +16,8 @@ import {
   type UnitDiff,
   type WordDiffOp,
 } from "@/lib/diff-utils";
+import CleanResumeView from "@/components/CleanResumeView";
+import type { LayoutPersonalInfo } from "@/lib/resume-layout";
 
 export interface TrackChangesSection {
   title: string;
@@ -34,6 +36,9 @@ interface ResumeTrackChangesProps {
   originalResume: string;
   changes?: ChangeReasonEntry[];
   onSectionsChange: (sections: TrackChangesSection[]) => void;
+  /** Personal info + job title, used by the shared Clean-view renderer header (same props ResumePdf takes). */
+  personalInfo?: LayoutPersonalInfo;
+  jobTitle?: string;
 }
 
 /**
@@ -425,8 +430,24 @@ export default function ResumeTrackChanges({
   originalResume,
   changes,
   onSectionsChange,
+  personalInfo,
+  jobTitle,
 }: ResumeTrackChangesProps) {
   const [showChanges, setShowChanges] = useState(true);
+
+  // Guard: if the normalized original has fewer than 2 detectable sections
+  // (by heading) OR has no detectable bullets at all, a meaningful diff
+  // can't be computed — fall back to rendering the tailored resume only,
+  // via the same shared Clean-view renderer (there's nothing reliable to
+  // diff against).
+  const canDiffReliably = useMemo(() => {
+    const headingMatches = originalResume.match(
+      /^(summary|profile|objective|experience|work experience|work history|employment|education|skills|technical skills|technologies|tech stack|core competencies|projects|certifications|certificates|awards|publications|volunteer|volunteering|languages|interests|references)\s*:?\s*$/gim
+    );
+    const sectionCount = headingMatches ? new Set(headingMatches.map((h) => h.trim().toLowerCase())).size : 0;
+    const hasBullets = /^[•\-*]\s+/m.test(originalResume);
+    return sectionCount >= 2 && hasBullets;
+  }, [originalResume]);
 
   // For each section, best-effort extract the comparable original text by
   // heading match. If no match is found, fall back to the whole original
@@ -558,7 +579,20 @@ export default function ResumeTrackChanges({
         </div>
       </div>
 
-      {sectionDiffs.map(({ section, diffs, originalUnits, unmatchedOriginalIndices }, sectionIndex) => {
+      {!showChanges && (
+        <CleanResumeView sections={sections} personalInfo={personalInfo} jobTitle={jobTitle} />
+      )}
+
+      {showChanges && !canDiffReliably && (
+        <>
+          <p className="mb-4 text-sm text-muted" data-testid="diff-unreliable-message">
+            Couldn&apos;t reliably compare to your original. Showing the tailored resume only.
+          </p>
+          <CleanResumeView sections={sections} personalInfo={personalInfo} jobTitle={jobTitle} />
+        </>
+      )}
+
+      {showChanges && canDiffReliably && sectionDiffs.map(({ section, diffs, originalUnits, unmatchedOriginalIndices }, sectionIndex) => {
         const occurrenceCounts = new Map<string, number>();
         const stableKeys = diffs.map((diff) => {
           const fingerprint = `${diff.originalIndex === -1 ? "add" : "orig"}:${sectionDiffs[sectionIndex].tailoredUnits[diff.tailoredIndex]?.isBullet ?? false}:${diff.tailoredText}`;
@@ -620,6 +654,7 @@ export default function ResumeTrackChanges({
       })}
 
       {showChanges &&
+        canDiffReliably &&
         missingSections.map(({ heading, content, insertIndex }) => (
           <div key={`missing-section-${heading}`} className="mt-6" data-testid="deleted-section">
             <h3 className="mb-3 flex items-center gap-2 border-b border-border pb-1 text-lg font-semibold tracking-tight text-muted">

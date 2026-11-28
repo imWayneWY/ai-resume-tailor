@@ -101,7 +101,7 @@ function isSectionHeadingLine(trimmed: string): boolean {
   );
 }
 
-function extractSkillsSectionFromRawText(text: string): string {
+export function extractSkillsSectionFromRawText(text: string): string {
   const lines = text.split(/\r?\n/);
   let start = -1;
   let inlineContent = "";
@@ -140,7 +140,7 @@ function extractSkillsSectionFromRawText(text: string): string {
  * line on •/| FIRST into segments, THEN strip a leading "Label:" prefix from
  * EACH segment independently, THEN split on ,/; for individual items.
  */
-function parseSkillItems(skillsContent: string): string[] {
+export function parseSkillItems(skillsContent: string): string[] {
   if (!skillsContent) return [];
   const items: string[] = [];
   const lines = skillsContent.split(/\r?\n/);

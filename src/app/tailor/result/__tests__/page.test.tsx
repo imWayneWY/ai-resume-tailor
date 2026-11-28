@@ -205,6 +205,23 @@ describe("ResultPage", () => {
     expect(screen.queryByText(/cover letter/i)).not.toBeInTheDocument();
   });
 
+  it("shows the restoration note when restoredSkills/repairedBullets were restored", () => {
+    sessionStore.tailorResult = JSON.stringify({
+      ...validResult,
+      restorationNote: "Restored 1 skill the AI removed: GraphQL.",
+    });
+    render(<ResultPage />);
+
+    expect(screen.getByTestId("restoration-note")).toHaveTextContent("Restored 1 skill the AI removed: GraphQL.");
+  });
+
+  it("does not render the restoration note when nothing was restored", () => {
+    sessionStore.tailorResult = JSON.stringify(validResult);
+    render(<ResultPage />);
+
+    expect(screen.queryByTestId("restoration-note")).not.toBeInTheDocument();
+  });
+
   it("renders collapsible cover letter section when present", () => {
     sessionStore.tailorResult = JSON.stringify(resultWithCoverLetter);
     render(<ResultPage />);
@@ -385,7 +402,7 @@ describe("ResultPage", () => {
     it("shows the Resume block with Show changes / Clean toggle", () => {
       sessionStore.tailorResult = JSON.stringify(resultWithRealDiff);
       sessionStore.tailorOriginalResume =
-        "Experience\n• Led full codebase migration from JavaScript to TypeScript, significantly improving developer productivity and code maintainability";
+        "Experience\n• Led full codebase migration from JavaScript to TypeScript, significantly improving developer productivity and code maintainability\n\nEducation\nState University, BS Computer Science";
       render(<ResultPage />);
 
       expect(screen.getByRole("button", { name: "Show changes" })).toBeInTheDocument();
@@ -396,7 +413,7 @@ describe("ResultPage", () => {
       const user = userEvent.setup();
       sessionStore.tailorResult = JSON.stringify(resultWithRealDiff);
       sessionStore.tailorOriginalResume =
-        "Experience\n• Led full codebase migration from JavaScript to TypeScript, significantly improving developer productivity and code maintainability";
+        "Experience\n• Led full codebase migration from JavaScript to TypeScript, significantly improving developer productivity and code maintainability\n\nEducation\nState University, BS Computer Science";
       render(<ResultPage />);
 
       // Click the changed bullet to open its popover.
@@ -417,7 +434,7 @@ describe("ResultPage", () => {
       const user = userEvent.setup();
       sessionStore.tailorResult = JSON.stringify(resultWithRealDiff);
       sessionStore.tailorOriginalResume =
-        "Experience\n• Led full codebase migration from JavaScript to TypeScript, significantly improving developer productivity and code maintainability";
+        "Experience\n• Led full codebase migration from JavaScript to TypeScript, significantly improving developer productivity and code maintainability\n\nEducation\nState University, BS Computer Science";
       const { unmount } = render(<ResultPage />);
 
       const bulletText = screen.getByText(/Led full codebase migration/);
@@ -452,11 +469,13 @@ describe("ResultPage", () => {
         sections: [{ title: "Experience", content: "• Built the checkout flow." }],
       };
       sessionStore.tailorResult = JSON.stringify(unchangedResult);
-      sessionStore.tailorOriginalResume = "Experience\n• Built the checkout flow.";
+      sessionStore.tailorOriginalResume =
+        "Experience\n• Built the checkout flow.\n\nEducation\nState University, BS Computer Science";
       render(<ResultPage />);
 
       const bulletText = screen.getByText(/Built the checkout flow/);
       await user.click(bulletText);
+
 
       expect(await screen.findByRole("button", { name: /^edit$/i })).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /^revert$/i })).not.toBeInTheDocument();

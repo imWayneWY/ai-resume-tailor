@@ -224,6 +224,81 @@ describe("validateTailoredResume", () => {
     const resultTechnologies = validateTailoredResume(originalTechnologies, tailoredTechnologies, []);
     expect(resultTechnologies.droppedSkills).toEqual([]);
   });
+  it("drops exactly GraphQL (no label false-positives) from a bullet-separated single-line Skills section", () => {
+    const originalWithSkills =
+      "SKILLS\n- Languages: Typescript, Javascript, C#, Python, HTML, CSS • Technologies: React, Next.js, Redux, Styled Components, CSS Modules, Jest, React Testing Library, GraphQL, Playwright, Cypress, Node.js, Azure, Git, Yarn, webpack";
+    const tailored = [
+      {
+        title: "Skills",
+        content:
+          "Languages: Typescript, Javascript, C#, Python, HTML, CSS\nTechnologies: React, Next.js, Redux, Styled Components, CSS Modules, Jest, React Testing Library, Playwright, Cypress, Node.js, Azure, Git, Yarn, webpack",
+      },
+    ];
+    const result = validateTailoredResume(originalWithSkills, tailored, []);
+    expect(result.droppedSkills).toEqual(["GraphQL"]);
+  });
+
+  it("drops exactly GraphQL from a real-production-shaped Skills line that starts with a bullet character (•), not a hyphen", () => {
+    const originalWithSkills =
+      "SKILLS\n• Languages: Typescript, Javascript, C#, Python, HTML, CSS • Technologies: React, Next.js, Redux, Styled Components, CSS Modules, Jest, React Testing Library, GraphQL, Playwright, Cypress, Node.js, Azure, Git, Yarn, webpack";
+    const tailored = [
+      {
+        title: "Skills",
+        content:
+          "Languages: Typescript, Javascript, C#, Python, HTML, CSS\nTechnologies: React, Next.js, Redux, Styled Components, CSS Modules, Jest, React Testing Library, Playwright, Cypress, Node.js, Azure, Git, Yarn, webpack",
+      },
+    ];
+    const bulletResult = validateTailoredResume(originalWithSkills, tailored, []);
+    expect(bulletResult.droppedSkills).toEqual(["GraphQL"]);
+  });
+
+
+  it("drops no skills (including no label false-positives) when GraphQL is kept, even with extra spacing around separators", () => {
+    const originalWithSkills =
+      "SKILLS\n-   Languages:  Typescript, Javascript, C#, Python, HTML, CSS  •  Technologies:  React, Next.js, Redux, Styled Components, CSS Modules, Jest, React Testing Library, GraphQL, Playwright, Cypress, Node.js, Azure, Git, Yarn, webpack";
+    const tailored = [
+      {
+        title: "Skills",
+        content:
+          "Languages: Typescript, Javascript, C#, Python, HTML, CSS\nTechnologies: React, Next.js, Redux, Styled Components, CSS Modules, Jest, React Testing Library, GraphQL, Playwright, Cypress, Node.js, Azure, Git, Yarn, webpack",
+      },
+    ];
+    const result = validateTailoredResume(originalWithSkills, tailored, []);
+    expect(result.droppedSkills).toEqual([]);
+  });
+
+  it("stops the uppercase SKILLS section at an uppercase EDUCATION heading and doesn't bleed into CERTIFICATES", () => {
+    const originalWithSkills =
+      "SKILLS\nLanguages: JavaScript, TypeScript, GraphQL\n\nEDUCATION\nState University — B.S. Computer Science\n\nCERTIFICATES\nAWS Certified Solutions Architect";
+    const tailored = [
+      { title: "Skills", content: "Languages: JavaScript, TypeScript, GraphQL" },
+    ];
+    const result = validateTailoredResume(originalWithSkills, tailored, []);
+    expect(result.droppedSkills).toEqual([]);
+    // Confirm the heading boundary works by also checking a drop still
+    // triggers (bleeding into EDUCATION/CERTIFICATES would hide false info).
+    const tailoredMissing = [{ title: "Skills", content: "Languages: JavaScript, TypeScript" }];
+    const resultMissing = validateTailoredResume(originalWithSkills, tailoredMissing, []);
+    expect(resultMissing.droppedSkills).toContain("GraphQL");
+    expect(resultMissing.droppedSkills).not.toContain("State University");
+    expect(resultMissing.droppedSkills).not.toContain("AWS Certified Solutions Architect");
+  });
+
+  it("sets skillsSectionNotFound to true when the original has substantial content but no Skills heading", () => {
+    const originalNoSkillsHeading =
+      "SUMMARY\nExperienced software engineer with 8 years building scalable web applications across fintech and e-commerce.\n\nEXPERIENCE\nACME Corp — Senior Engineer (2020-2024)\nBuilt and maintained core services used by millions of users daily.";
+    const tailored = [{ title: "Summary", content: "Experienced software engineer." }];
+    const result = validateTailoredResume(originalNoSkillsHeading, tailored, []);
+    expect(result.skillsSectionNotFound).toBe(true);
+  });
+
+  it("sets skillsSectionNotFound to false in the normal case where a Skills heading is found", () => {
+    const originalWithSkills =
+      "Summary\nBuilt things.\n\nSkills\nLanguages: JavaScript, TypeScript, GraphQL\nTools: Docker, Git";
+    const tailored = [{ title: "Skills", content: "Languages: JavaScript, TypeScript, GraphQL\nTools: Docker, Git" }];
+    const result = validateTailoredResume(originalWithSkills, tailored, []);
+    expect(result.skillsSectionNotFound).toBe(false);
+  });
 });
 
 describe("flagLargeDeletion", () => {

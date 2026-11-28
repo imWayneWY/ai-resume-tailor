@@ -1,7 +1,7 @@
 import React, { type ReactNode } from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import ResultPage from "../page";
+import ResultPage, { type Section } from "../page";
 
 // ---------- mocks ----------
 
@@ -12,11 +12,21 @@ jest.mock("next/navigation", () => ({
   useRouter: () => mockRouter,
 }));
 
+// Capture the ReactElement/props passed into pdf(<ResumePdf ... />) so we
+// can assert the PDF always gets the CURRENT/clean text, never diff-marked
+// text. (@react-pdf/renderer's `pdf()` is mocked below and never actually
+// renders the element tree, so we can't rely on the ResumePdf mock being
+// invoked — we capture directly from the element passed to pdf().)
+let capturedPdfProps: Record<string, unknown> | null = null;
+
 // Mock @react-pdf/renderer (dynamic import in component)
 jest.mock("@react-pdf/renderer", () => ({
-  pdf: jest.fn(() => ({
-    toBlob: jest.fn().mockResolvedValue(new Blob(["pdf"], { type: "application/pdf" })),
-  })),
+  pdf: jest.fn((element: { props: Record<string, unknown> }) => {
+    capturedPdfProps = element.props;
+    return {
+      toBlob: jest.fn().mockResolvedValue(new Blob(["pdf"], { type: "application/pdf" })),
+    };
+  }),
   Document: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   Page: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   View: ({ children }: { children: ReactNode }) => <div>{children}</div>,
@@ -68,6 +78,7 @@ beforeEach(() => {
   sessionStorageMock.setItem.mockClear();
   mockPush.mockClear();
   mockReplace.mockClear();
+  capturedPdfProps = null;
 });
 
 // ---------- tests ----------
@@ -98,14 +109,13 @@ describe("ResultPage", () => {
     expect(mockReplace).toHaveBeenCalledWith("/tailor");
   });
 
-  it("renders resume sections from sessionStorage", () => {
+  it("renders resume section titles in the Resume block", () => {
     sessionStore.tailorResult = JSON.stringify(validResult);
     render(<ResultPage />);
 
-    // Should show section titles in both preview and edit
-    expect(screen.getAllByText("Summary")).toHaveLength(2);
-    expect(screen.getAllByText("Skills")).toHaveLength(2);
-    expect(screen.getAllByText("Experience")).toHaveLength(2);
+    expect(screen.getByText("Summary")).toBeInTheDocument();
+    expect(screen.getByText("Skills")).toBeInTheDocument();
+    expect(screen.getByText("Experience")).toBeInTheDocument();
   });
 
   it("renders FitSummary without throwing when tailorLlmKeywords is a legacy string[] from an older session", () => {
@@ -141,65 +151,12 @@ describe("ResultPage", () => {
     expect(() => render(<ResultPage />)).not.toThrow();
   });
 
-  it("renders section content in preview and edit", () => {
+  it("renders section content in the Resume block", () => {
     sessionStore.tailorResult = JSON.stringify(validResult);
     render(<ResultPage />);
 
-    // Content appears in both preview (as text) and edit (as textarea value)
-    // so use getAllByText
-    expect(screen.getAllByText("Experienced developer").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("TypeScript, React, Node.js").length).toBeGreaterThanOrEqual(1);
-  });
-
-  it("renders editable textareas for each section", () => {
-    sessionStore.tailorResult = JSON.stringify(validResult);
-    render(<ResultPage />);
-
-    // 6 inputs (fullName, email, phone, location, linkedin, jobTitle) + 3 section textareas = 9 textboxes
-    const textareas = screen.getAllByRole("textbox");
-    expect(textareas).toHaveLength(9);
-
-    // Section textareas are the last 3
-    const sectionTextareas = textareas.slice(6);
-    expect(sectionTextareas[0]).toHaveValue("Experienced developer");
-    expect(sectionTextareas[1]).toHaveValue("TypeScript, React, Node.js");
-  });
-
-  it("updates preview when editing a section", async () => {
-    const user = userEvent.setup();
-    sessionStore.tailorResult = JSON.stringify(validResult);
-    render(<ResultPage />);
-
-    // Section textareas start after 6 input fields
-    const textareas = screen.getAllByRole("textbox");
-    const summaryTextarea = textareas[6];
-    await user.clear(summaryTextarea);
-    await user.type(summaryTextarea, "Updated summary");
-
-    // Updated text appears in both preview and textarea
-    expect(screen.getAllByText("Updated summary").length).toBeGreaterThanOrEqual(1);
-  });
-
-  it("persists edits to sessionStorage", async () => {
-    const user = userEvent.setup();
-    sessionStore.tailorResult = JSON.stringify(validResult);
-    render(<ResultPage />);
-
-    // Section textareas start after 6 input fields
-    const textareas = screen.getAllByRole("textbox");
-    const summaryTextarea = textareas[6];
-    await user.clear(summaryTextarea);
-    await user.type(summaryTextarea, "New content");
-
-    await waitFor(() => {
-      expect(sessionStorageMock.setItem).toHaveBeenCalled();
-      // Find the tailorResult setItem call (not tailorPersonalInfo)
-      const calls = sessionStorageMock.setItem.mock.calls;
-      const resultCall = calls.filter((c: string[]) => c[0] === "tailorResult").pop();
-      expect(resultCall).toBeDefined();
-      const saved = JSON.parse(resultCall![1]);
-      expect(saved.sections[0].content).toBe("New content");
-    });
+    expect(screen.getByText("Experienced developer")).toBeInTheDocument();
+    expect(document.body.textContent).toContain("TypeScript, React, Node.js");
   });
 
   it("renders Back button that navigates to /tailor", async () => {
@@ -220,6 +177,25 @@ describe("ResultPage", () => {
     expect(
       screen.getByRole("button", { name: /download pdf/i })
     ).toBeInTheDocument();
+  });
+
+  it("passes current (unmodified) section text to ResumePdf on download, never diff-marked text", async () => {
+    const user = userEvent.setup();
+    sessionStore.tailorResult = JSON.stringify(validResult);
+    render(<ResultPage />);
+
+    const downloadButton = screen.getByRole("button", { name: /download pdf/i });
+    await user.click(downloadButton);
+
+    await waitFor(() => {
+      expect(capturedPdfProps).not.toBeNull();
+    });
+    const props = capturedPdfProps as unknown as { sections: Section[] };
+    expect(props.sections).toEqual(validResult.sections);
+    // No diff markup characters should ever appear in what's handed to the PDF.
+    for (const section of props.sections) {
+      expect(section.content).not.toMatch(/<del>|<ins>/);
+    }
   });
 
   it("does not render cover letter section when not present", () => {
@@ -284,13 +260,11 @@ describe("ResultPage", () => {
   });
 
   it("redirects to /tailor when result is null (no sessionStorage data)", () => {
-    // With no sessionStorage data, the component has no valid result
-    // and redirects to /tailor via the useEffect
     render(<ResultPage />);
     expect(mockReplace).toHaveBeenCalledWith("/tailor");
   });
 
-  it("renders personal info in preview when provided", () => {
+  it("renders personal info in header form when provided", () => {
     sessionStore.tailorResult = JSON.stringify({
       ...validResult,
       personalInfo: {
@@ -302,13 +276,13 @@ describe("ResultPage", () => {
     });
     render(<ResultPage />);
 
-    expect(screen.getByText("Jane Smith")).toBeInTheDocument();
-    expect(screen.getByText(/jane@example\.com/)).toBeInTheDocument();
-    expect(screen.getByText(/555-1234/)).toBeInTheDocument();
-    expect(screen.getByText(/Vancouver, BC/)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Full Name")).toHaveValue("Jane Smith");
+    expect(screen.getByPlaceholderText("Email")).toHaveValue("jane@example.com");
+    expect(screen.getByPlaceholderText("Phone")).toHaveValue("555-1234");
+    expect(screen.getByPlaceholderText("Location")).toHaveValue("Vancouver, BC");
   });
 
-  it("renders job title in preview when returned by API", () => {
+  it("renders job title in header form when returned by API", () => {
     sessionStore.tailorResult = JSON.stringify({
       ...validResult,
       jobTitle: "Senior Software Engineer",
@@ -318,7 +292,9 @@ describe("ResultPage", () => {
     });
     render(<ResultPage />);
 
-    expect(screen.getByText("Senior Software Engineer")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("e.g., Senior Software Engineer")).toHaveValue(
+      "Senior Software Engineer"
+    );
   });
 
   it("renders editable personal info fields", () => {
@@ -347,7 +323,7 @@ describe("ResultPage", () => {
     expect(screen.getByPlaceholderText("e.g., Senior Software Engineer")).toHaveValue("Product Manager");
   });
 
-  it("updates preview when editing personal info", async () => {
+  it("updates name field as the user types", async () => {
     const user = userEvent.setup();
     sessionStore.tailorResult = JSON.stringify(validResult);
     render(<ResultPage />);
@@ -355,10 +331,10 @@ describe("ResultPage", () => {
     const nameInput = screen.getByPlaceholderText("Full Name");
     await user.type(nameInput, "John Doe");
 
-    expect(screen.getByText("John Doe")).toBeInTheDocument();
+    expect(nameInput).toHaveValue("John Doe");
   });
 
-  it("renders LinkedIn field in edit panel", () => {
+  it("renders LinkedIn field in header form", () => {
     sessionStore.tailorResult = JSON.stringify({
       ...validResult,
       personalInfo: {
@@ -372,22 +348,6 @@ describe("ResultPage", () => {
     render(<ResultPage />);
 
     expect(screen.getByPlaceholderText("linkedin.com/in/johndoe")).toHaveValue("linkedin.com/in/janesmith");
-  });
-
-  it("shows LinkedIn in preview contact line", () => {
-    sessionStore.tailorResult = JSON.stringify({
-      ...validResult,
-      personalInfo: {
-        fullName: "Jane Smith",
-        email: "jane@test.com",
-        phone: "",
-        location: "",
-        linkedin: "linkedin.com/in/janesmith",
-      },
-    });
-    render(<ResultPage />);
-
-    expect(screen.getByText(/linkedin\.com\/in\/janesmith/)).toBeInTheDocument();
   });
 
   it("uses LLM-extracted personal info from API response", () => {
@@ -410,69 +370,96 @@ describe("ResultPage", () => {
     expect(screen.getByPlaceholderText("linkedin.com/in/johndoe")).toHaveValue("linkedin.com/in/yan-wei-ca");
   });
 
-  it("shows Download PDF button", () => {
-    sessionStore.tailorResult = JSON.stringify(validResult);
-    render(<ResultPage />);
-
-    expect(screen.getByRole("button", { name: /download pdf/i })).toBeInTheDocument();
-  });
-
-  describe("ChangesDiff accept/reject", () => {
-    const resultWithChanges = {
+  describe("Resume block — diff/revert", () => {
+    const resultWithRealDiff = {
       ...validResult,
       sections: [
-        { title: "Summary", content: "Built scalable systems." },
-      ],
-      changes: [
         {
-          section: "Summary",
-          original: "Built things.",
-          revised: "Built scalable systems.",
-          reason: "Clarified scope.",
-          jdTermsUsed: ["scalable"],
+          title: "Experience",
+          content:
+            "• Led full codebase migration from JavaScript to TypeScript",
         },
       ],
     };
 
-    it("rejecting then accepting a change restores the revised text", async () => {
-      const user = userEvent.setup();
-      sessionStore.tailorResult = JSON.stringify(resultWithChanges);
+    it("shows the Resume block with Show changes / Clean toggle", () => {
+      sessionStore.tailorResult = JSON.stringify(resultWithRealDiff);
+      sessionStore.tailorOriginalResume =
+        "Experience\n• Led full codebase migration from JavaScript to TypeScript, significantly improving developer productivity and code maintainability";
       render(<ResultPage />);
 
-      const rejectButton = screen.getByRole("button", { name: /reject/i });
-      await user.click(rejectButton);
-
-      // After reject, the section content should show the original text.
-      await waitFor(() => {
-        expect(screen.getAllByText(/Built things\./).length).toBeGreaterThan(0);
-      });
-
-      const acceptButton = screen.getByRole("button", { name: /accept/i });
-      await user.click(acceptButton);
-
-      // After accept, the revised text should be restored.
-      await waitFor(() => {
-        expect(screen.getAllByText(/Built scalable systems\./).length).toBeGreaterThan(0);
-      });
+      expect(screen.getByRole("button", { name: "Show changes" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Clean" })).toBeInTheDocument();
     });
 
-    it("shows a manual-edit message when rejecting a change whose revised text no longer matches", async () => {
+    it("clicking a changed bullet reveals a Revert option that restores the exact original text", async () => {
       const user = userEvent.setup();
-      const resultWithStaleChange = {
-        ...resultWithChanges,
-        sections: [{ title: "Summary", content: "Something else entirely." }],
-      };
-      sessionStore.tailorResult = JSON.stringify(resultWithStaleChange);
+      sessionStore.tailorResult = JSON.stringify(resultWithRealDiff);
+      sessionStore.tailorOriginalResume =
+        "Experience\n• Led full codebase migration from JavaScript to TypeScript, significantly improving developer productivity and code maintainability";
       render(<ResultPage />);
 
-      const rejectButton = screen.getByRole("button", { name: /reject/i });
-      await user.click(rejectButton);
+      // Click the changed bullet to open its popover.
+      const bulletText = screen.getByText(/Led full codebase migration/);
+      await user.click(bulletText);
+
+      const revertButton = await screen.findByRole("button", { name: /revert/i });
+      await user.click(revertButton);
 
       await waitFor(() => {
         expect(
-          screen.getByText(/this line was edited\. please update it manually\./i)
+          screen.getByText(/significantly improving developer productivity and code maintainability/)
         ).toBeInTheDocument();
       });
+    });
+
+    it("editing a bullet persists the updated content to sessionStorage's tailorResult, and survives a simulated reload", async () => {
+      const user = userEvent.setup();
+      sessionStore.tailorResult = JSON.stringify(resultWithRealDiff);
+      sessionStore.tailorOriginalResume =
+        "Experience\n• Led full codebase migration from JavaScript to TypeScript, significantly improving developer productivity and code maintainability";
+      const { unmount } = render(<ResultPage />);
+
+      const bulletText = screen.getByText(/Led full codebase migration/);
+      await user.click(bulletText);
+
+      const editButton = await screen.findByRole("button", { name: /^edit$/i });
+      await user.click(editButton);
+
+      const textarea = screen.getByDisplayValue(/Led full codebase migration/);
+      await user.clear(textarea);
+      await user.type(textarea, "Led the TypeScript migration end-to-end.");
+
+      const saveButton = await screen.findByRole("button", { name: /^save$/i });
+      await user.click(saveButton);
+
+      await waitFor(() => {
+        const stored = JSON.parse(sessionStore.tailorResult);
+        expect(stored.sections[0].content).toContain("Led the TypeScript migration end-to-end.");
+      });
+
+      // Simulate a reload: unmount, re-read from sessionStorage, re-render.
+      unmount();
+      render(<ResultPage />);
+      const reloaded = JSON.parse(sessionStore.tailorResult);
+      expect(reloaded.sections[0].content).toContain("Led the TypeScript migration end-to-end.");
+    });
+
+    it("unchanged bullets are also clickable/editable, not just changed ones", async () => {
+      const user = userEvent.setup();
+      const unchangedResult = {
+        ...validResult,
+        sections: [{ title: "Experience", content: "• Built the checkout flow." }],
+      };
+      sessionStore.tailorResult = JSON.stringify(unchangedResult);
+      sessionStore.tailorOriginalResume = "Experience\n• Built the checkout flow.";
+      render(<ResultPage />);
+
+      const bulletText = screen.getByText(/Built the checkout flow/);
+      await user.click(bulletText);
+
+      expect(await screen.findByRole("button", { name: /^edit$/i })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /^revert$/i })).not.toBeInTheDocument();
     });
   });
 
